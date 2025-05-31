@@ -2600,6 +2600,7 @@ dependencies = [
  "bevy",
  "bevy_enhanced_input",
  "log",
+ "rand",
  "tracing",
 ]
 

@@ -1,5 +1,4 @@
-# Run the game in web mode
 build:
     bevy build web
 run:
-    bevy run web
+    bevy run web --open

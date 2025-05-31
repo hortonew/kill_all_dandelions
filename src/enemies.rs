@@ -1,0 +1,160 @@
+use bevy::prelude::*;
+use rand::Rng;
+
+use crate::GameState;
+use crate::pause_menu::PauseState;
+
+/// Plugin for handling enemy spawning and behavior
+pub struct EnemiesPlugin;
+
+impl Plugin for EnemiesPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(GameState::Playing), setup_enemy_timer)
+            .add_systems(
+                Update,
+                (spawn_dandelions, handle_dandelion_clicks, debug_dandelion_count)
+                    .run_if(in_state(GameState::Playing))
+                    .run_if(in_state(PauseState::Playing)),
+            )
+            .add_systems(OnExit(GameState::Playing), cleanup_enemies);
+    }
+}
+
+/// Timer resource for spawning dandelions
+#[derive(Resource)]
+struct DandelionSpawnTimer {
+    timer: Timer,
+}
+
+impl Default for DandelionSpawnTimer {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(2.0, TimerMode::Repeating),
+        }
+    }
+}
+
+/// Component marking dandelion enemies
+#[derive(Component)]
+pub struct Dandelion {
+    pub health: u32,
+}
+
+/// Marker component for enemy entities
+#[derive(Component)]
+struct EnemyEntity;
+
+/// Setup the enemy spawn timer
+fn setup_enemy_timer(mut commands: Commands) {
+    commands.insert_resource(DandelionSpawnTimer::default());
+}
+
+/// Spawn dandelions at random positions
+fn spawn_dandelions(
+    mut commands: Commands,
+    mut spawn_timer: ResMut<DandelionSpawnTimer>,
+    time: Res<Time>,
+    windows: Query<&Window>,
+    asset_server: Res<AssetServer>,
+) {
+    spawn_timer.timer.tick(time.delta());
+
+    if spawn_timer.timer.just_finished() {
+        if let Ok(window) = windows.single() {
+            let mut rng = rand::thread_rng();
+
+            // Calculate safe spawn area to avoid UI panels at top and bottom
+            let margin = 30.0; // Margin from edges
+            let top_ui_height = window.height() * 0.12; // 12vh for top panel
+            let bottom_ui_height = window.height() * 0.08; // 8vh for bottom panel
+
+            // Calculate available grass area
+            let min_x = -window.width() / 2.0 + margin;
+            let max_x = window.width() / 2.0 - margin;
+            let min_y = -window.height() / 2.0 + bottom_ui_height + margin;
+            let max_y = window.height() / 2.0 - top_ui_height - margin;
+
+            let x = rng.gen_range(min_x..max_x);
+            let y = rng.gen_range(min_y..max_y);
+
+            // Spawn dandelion sprite at proper size
+            info!(
+                "Spawning dandelion at ({:.1}, {:.1}) in grass area [{}x{} to {}x{}]",
+                x, y, min_x as i32, min_y as i32, max_x as i32, max_y as i32
+            );
+            commands.spawn((
+                Sprite {
+                    image: asset_server.load("dandelion.png"),
+                    color: Color::WHITE, // Use white to show the actual sprite
+                    ..default()
+                },
+                Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(1.0)), // Higher Z to render above UI
+                Dandelion { health: 1 },
+                EnemyEntity,
+            ));
+        }
+    }
+}
+
+/// Handle clicks on dandelions
+fn handle_dandelion_clicks(
+    mut commands: Commands,
+    mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+) {
+    if mouse_input.just_pressed(MouseButton::Left) {
+        if let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), camera_query.single()) {
+            if let Some(cursor_pos) = window.cursor_position() {
+                // Convert screen coordinates to world coordinates
+                if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+                    info!("Click at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
+
+                    // Check if click hit any dandelion
+                    for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
+                        let dandelion_pos = transform.translation.truncate();
+                        // Assume dandelion.png is about 35x35 pixels
+                        let sprite_size = 35.0;
+                        let half_size = sprite_size / 2.0;
+
+                        // Simple AABB collision detection
+                        if world_pos.x >= dandelion_pos.x - half_size
+                            && world_pos.x <= dandelion_pos.x + half_size
+                            && world_pos.y >= dandelion_pos.y - half_size
+                            && world_pos.y <= dandelion_pos.y + half_size
+                        {
+                            dandelion.health = dandelion.health.saturating_sub(1);
+
+                            if dandelion.health == 0 {
+                                commands.entity(entity).despawn();
+                                info!("Dandelion destroyed at ({:.1}, {:.1})!", dandelion_pos.x, dandelion_pos.y);
+                            }
+
+                            break; // Only hit one dandelion per click
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Debug system to count dandelions
+fn debug_dandelion_count(dandelions: Query<&Dandelion>) {
+    let count = dandelions.iter().count();
+    if count > 0 {
+        info!("Current dandelion count: {}", count);
+    }
+}
+
+/// Cleanup enemy entities when exiting playing state
+fn cleanup_enemies(mut commands: Commands, enemy_entities: Query<Entity, With<EnemyEntity>>) {
+    commands.remove_resource::<DandelionSpawnTimer>();
+
+    for entity in &enemy_entities {
+        commands.entity(entity).despawn();
+    }
+
+    info!("Enemies cleaned up");
+}

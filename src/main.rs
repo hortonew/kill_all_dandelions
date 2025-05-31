@@ -1,9 +1,10 @@
 use bevy::prelude::*;
 
+mod enemies;
 mod menu;
 mod pause_menu;
 mod playing;
-
+use enemies::EnemiesPlugin;
 use menu::MenuPlugin;
 use pause_menu::PauseMenuPlugin;
 use playing::PlayingPlugin;
@@ -27,7 +28,6 @@ fn main() -> AppExit {
             primary_window: Some(Window {
                 title: "Kill All Dandelions".into(),
                 resizable: true,
-                // For web builds, let the canvas fill the browser window
                 fit_canvas_to_parent: true,
                 prevent_default_event_handling: false,
                 ..default()
@@ -35,6 +35,6 @@ fn main() -> AppExit {
             ..default()
         }))
         .init_state::<GameState>()
-        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin))
+        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin))
         .run()
 }

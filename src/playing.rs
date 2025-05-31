@@ -48,6 +48,16 @@ fn setup_game_resources(mut commands: Commands) {
 /// Setup the game camera
 fn setup_game_camera(mut commands: Commands) {
     commands.spawn((Camera2d, GameEntity));
+
+    // Add grass background sprite to cover the play area
+    commands.spawn((
+        Sprite {
+            color: Color::srgb(0.2, 0.6, 0.2), // Green grass color
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)).with_scale(Vec3::new(2000.0, 2000.0, 1.0)), // Large background
+        GameEntity,
+    ));
 }
 
 /// Setup the game UI layout
@@ -75,7 +85,7 @@ fn setup_game_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
                 ))
                 .with_children(|parent| {
                     // Score display
@@ -103,14 +113,14 @@ fn setup_game_ui(mut commands: Commands) {
                     ));
                 });
 
-            // Middle game area (lawn) - takes remaining space
+            // Middle game area (lawn) - takes remaining space, no background color
             parent.spawn((
                 Node {
                     width: Val::Percent(100.0),
                     flex_grow: 1.0,
                     ..default()
                 },
-                BackgroundColor(Color::srgb(0.2, 0.6, 0.2)),
+                // Removed BackgroundColor to let world sprites show through
             ));
 
             // Bottom UI panel
@@ -124,7 +134,7 @@ fn setup_game_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
                 ))
                 .with_children(|parent| {
                     parent.spawn((
