@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 
 mod menu;
+mod pause_menu;
 mod playing;
 
 use menu::MenuPlugin;
+use pause_menu::PauseMenuPlugin;
 use playing::PlayingPlugin;
 
 /// Game states for managing different screens
@@ -33,6 +35,6 @@ fn main() -> AppExit {
             ..default()
         }))
         .init_state::<GameState>()
-        .add_plugins((MenuPlugin, PlayingPlugin))
+        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin))
         .run()
 }

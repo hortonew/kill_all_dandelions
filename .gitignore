@@ -5,3 +5,6 @@
 .vscode
 .github/instructions/
 .bacon-locations
+
+# temporary ignores
+ARCHITECTURE.md
