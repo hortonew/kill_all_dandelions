@@ -236,6 +236,8 @@ fn update_ui(
     mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>,
     mut combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
     mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
+    windows: Query<&Window>,
+    area_tracker: Res<crate::enemies::DandelionAreaTracker>,
 ) {
     if let Ok(mut text) = score_query.single_mut() {
         **text = format!("Score: {}", game_data.score);
@@ -255,7 +257,26 @@ fn update_ui(
     }
 
     if let Ok(mut text) = curb_appeal_query.single_mut() {
-        let curb_appeal = (100_i32 - (game_data.dandelion_count as i32 * 5)).max(0);
+        let curb_appeal = if let Ok(window) = windows.single() {
+            // Calculate playable area (excluding UI panels)
+            let margin = 30.0;
+            let top_ui_height = window.height() * 0.12; // 12vh for top panel
+            let bottom_ui_height = window.height() * 0.08; // 8vh for bottom panel
+
+            let playable_width = window.width() - (margin * 2.0);
+            let playable_height = window.height() - top_ui_height - bottom_ui_height - (margin * 2.0);
+            let total_lawn_area = playable_width * playable_height;
+
+            // Calculate total dandelion coverage area
+            let total_dandelion_area = area_tracker.total_area;
+
+            // Calculate coverage percentage and curb appeal
+            let coverage_percentage = (total_dandelion_area / total_lawn_area) * 100.0;
+            let curb_appeal = (100.0 - coverage_percentage.min(100.0)).max(0.0);
+            curb_appeal as i32
+        } else {
+            100 // Default if no window found
+        };
         **text = format!("Curb Appeal: {}%", curb_appeal);
     }
 }
