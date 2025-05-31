@@ -8,7 +8,7 @@ pub struct PlayingPlugin;
 
 impl Plugin for PlayingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), setup_game)
+        app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
             .add_systems(
                 Update,
                 (handle_game_input, update_ui.run_if(in_state(PauseState::Playing))).run_if(in_state(GameState::Playing)),
@@ -39,14 +39,19 @@ struct ComboText;
 #[derive(Component)]
 struct CurbAppealText;
 
-/// Setup the game scene and UI
-fn setup_game(mut commands: Commands) {
-    // Initialize game data
+/// Initialize game resources
+fn setup_game_resources(mut commands: Commands) {
     commands.insert_resource(GameData::default());
+    info!("Game started!");
+}
 
-    // Spawn main game camera
+/// Setup the game camera
+fn setup_game_camera(mut commands: Commands) {
     commands.spawn((Camera2d, GameEntity));
+}
 
+/// Setup the game UI layout
+fn setup_game_ui(mut commands: Commands) {
     // Game UI container with flex layout
     commands
         .spawn((
@@ -129,8 +134,6 @@ fn setup_game(mut commands: Commands) {
                     ));
                 });
         });
-
-    info!("Game started!");
 }
 
 /// Handle input during gameplay

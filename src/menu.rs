@@ -7,7 +7,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Menu), setup_menu)
+        app.add_systems(OnEnter(GameState::Menu), (setup_menu_camera, setup_menu_ui))
             .add_systems(Update, handle_menu_input.run_if(in_state(GameState::Menu)))
             .add_systems(OnExit(GameState::Menu), cleanup_menu);
     }
@@ -17,11 +17,13 @@ impl Plugin for MenuPlugin {
 #[derive(Component)]
 struct MenuEntity;
 
-/// Setup the main menu UI
-fn setup_menu(mut commands: Commands) {
-    // Spawn camera for menu
+/// Setup the menu camera
+fn setup_menu_camera(mut commands: Commands) {
     commands.spawn((Camera2d, MenuEntity));
+}
 
+/// Setup the main menu UI
+fn setup_menu_ui(mut commands: Commands) {
     // Main menu container
     commands
         .spawn((
