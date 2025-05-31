@@ -3,6 +3,7 @@ use rand::Rng;
 
 use crate::GameState;
 use crate::pause_menu::PauseState;
+use crate::playing::GameData;
 
 /// Plugin for handling enemy spawning and behavior
 pub struct EnemiesPlugin;
@@ -56,6 +57,7 @@ fn spawn_dandelions(
     time: Res<Time>,
     windows: Query<&Window>,
     asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
 ) {
     spawn_timer.timer.tick(time.delta());
 
@@ -92,6 +94,9 @@ fn spawn_dandelions(
                 Dandelion { health: 1 },
                 EnemyEntity,
             ));
+
+            // Increment dandelion count
+            game_data.dandelion_count += 1;
         }
     }
 }
@@ -103,6 +108,7 @@ fn handle_dandelion_clicks(
     mouse_input: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
+    mut game_data: ResMut<GameData>,
 ) {
     if mouse_input.just_pressed(MouseButton::Left) {
         if let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), camera_query.single()) {
@@ -128,7 +134,12 @@ fn handle_dandelion_clicks(
 
                             if dandelion.health == 0 {
                                 commands.entity(entity).despawn();
-                                info!("Dandelion destroyed at ({:.1}, {:.1})!", dandelion_pos.x, dandelion_pos.y);
+                                game_data.add_dandelion_kill();
+                                game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+                                info!(
+                                    "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x",
+                                    dandelion_pos.x, dandelion_pos.y, game_data.score, game_data.combo
+                                );
                             }
 
                             break; // Only hit one dandelion per click

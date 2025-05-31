@@ -11,7 +11,9 @@ impl Plugin for PlayingPlugin {
         app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
             .add_systems(
                 Update,
-                (handle_game_input, update_ui.run_if(in_state(PauseState::Playing))).run_if(in_state(GameState::Playing)),
+                (handle_game_input, update_ui, update_combo_timer)
+                    .run_if(in_state(PauseState::Playing))
+                    .run_if(in_state(GameState::Playing)),
             )
             .add_systems(OnExit(GameState::Playing), cleanup_game);
     }
@@ -23,10 +25,44 @@ struct GameEntity;
 
 /// Game state resource
 #[derive(Resource, Default)]
-struct GameData {
-    score: u32,
-    combo: u32,
-    dandelion_count: u32,
+pub struct GameData {
+    pub score: u32,
+    pub combo: u32,
+    pub combo_timer: Timer,
+    pub dandelion_count: u32,
+}
+
+impl GameData {
+    const DANDELION_POINTS: u32 = 10;
+    const INITIAL_COMBO_TIME: f32 = 3.0;
+    const MAX_COMBO_TIME: f32 = 6.0;
+
+    fn new() -> Self {
+        Self {
+            score: 0,
+            combo: 0,
+            combo_timer: Timer::from_seconds(Self::INITIAL_COMBO_TIME, TimerMode::Once),
+            dandelion_count: 0,
+        }
+    }
+
+    pub fn add_dandelion_kill(&mut self) {
+        self.combo += 1;
+        self.score += Self::DANDELION_POINTS * self.combo;
+
+        // Calculate new timer duration based on combo level (logarithmic growth)
+        let combo_factor = (self.combo as f32).ln() + 1.0;
+        let new_duration = (Self::INITIAL_COMBO_TIME + combo_factor * 0.8).min(Self::MAX_COMBO_TIME);
+
+        self.combo_timer.set_duration(std::time::Duration::from_secs_f32(new_duration));
+        self.combo_timer.reset();
+    }
+
+    pub fn reset_combo(&mut self) {
+        self.combo = 0;
+        self.combo_timer.set_duration(std::time::Duration::from_secs_f32(Self::INITIAL_COMBO_TIME));
+        self.combo_timer.reset();
+    }
 }
 
 /// UI components
@@ -37,11 +73,14 @@ struct ScoreText;
 struct ComboText;
 
 #[derive(Component)]
+struct ComboTimerBar;
+
+#[derive(Component)]
 struct CurbAppealText;
 
 /// Initialize game resources
 fn setup_game_resources(mut commands: Commands) {
-    commands.insert_resource(GameData::default());
+    commands.insert_resource(GameData::new());
     info!("Game started!");
 }
 
@@ -96,13 +135,47 @@ fn setup_game_ui(mut commands: Commands) {
                         ScoreText,
                     ));
 
-                    // Combo display
-                    parent.spawn((
-                        Text::new("Combo: 0x"),
-                        TextFont { font_size: 20.0, ..default() },
-                        TextColor(Color::srgb(1.0, 0.8, 0.2)),
-                        ComboText,
-                    ));
+                    // Combo display with timer
+                    parent
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                        .with_children(|parent| {
+                            // Combo multiplier
+                            parent.spawn((
+                                Text::new("Combo: 0x"),
+                                TextFont { font_size: 20.0, ..default() },
+                                TextColor(Color::srgb(1.0, 0.8, 0.2)),
+                                ComboText,
+                            ));
+
+                            // Combo timer bar container
+                            parent
+                                .spawn((
+                                    Node {
+                                        width: Val::Px(80.0),
+                                        height: Val::Px(6.0),
+                                        border: UiRect::all(Val::Px(1.0)),
+                                        ..default()
+                                    },
+                                    BorderColor(Color::srgb(0.5, 0.5, 0.5)),
+                                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                                ))
+                                .with_children(|parent| {
+                                    // Timer bar fill
+                                    parent.spawn((
+                                        Node {
+                                            width: Val::Percent(0.0),
+                                            height: Val::Percent(100.0),
+                                            ..default()
+                                        },
+                                        BackgroundColor(Color::srgb(1.0, 0.8, 0.2)),
+                                        ComboTimerBar,
+                                    ));
+                                });
+                        });
 
                     // Curb appeal display
                     parent.spawn((
@@ -161,6 +234,7 @@ fn update_ui(
     game_data: Res<GameData>,
     mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
     mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>,
+    mut combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
     mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
 ) {
     if let Ok(mut text) = score_query.single_mut() {
@@ -171,9 +245,30 @@ fn update_ui(
         **text = format!("Combo: {}x", game_data.combo);
     }
 
+    if let Ok(mut node) = combo_timer_bar_query.single_mut() {
+        if game_data.combo > 0 {
+            let progress = game_data.combo_timer.remaining_secs() / game_data.combo_timer.duration().as_secs_f32();
+            node.width = Val::Percent(progress * 100.0);
+        } else {
+            node.width = Val::Percent(0.0);
+        }
+    }
+
     if let Ok(mut text) = curb_appeal_query.single_mut() {
         let curb_appeal = (100_i32 - (game_data.dandelion_count as i32 * 5)).max(0);
         **text = format!("Curb Appeal: {}%", curb_appeal);
+    }
+}
+
+/// Update combo timer and reset combo when it expires
+fn update_combo_timer(mut game_data: ResMut<GameData>, time: Res<Time>) {
+    if game_data.combo > 0 {
+        game_data.combo_timer.tick(time.delta());
+
+        if game_data.combo_timer.finished() {
+            game_data.reset_combo();
+            info!("Combo expired! Reset to 0");
+        }
     }
 }
 
