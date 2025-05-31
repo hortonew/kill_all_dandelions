@@ -19,6 +19,7 @@ impl Plugin for EnemiesPlugin {
                     handle_dandelion_clicks,
                     update_seed_orbs,
                     check_dandelion_merging,
+                    update_merge_effects,
                     debug_dandelion_count,
                 )
                     .run_if(in_state(GameState::Playing))
@@ -154,6 +155,13 @@ struct SeedOrb {
 /// Marker component for enemy entities
 #[derive(Component)]
 struct EnemyEntity;
+
+/// Component for merge effect
+#[derive(Component)]
+struct MergeEffect {
+    timer: Timer,
+    initial_scale: f32,
+}
 
 /// Setup the enemy spawn timer
 fn setup_enemy_timer(mut commands: Commands) {
@@ -433,6 +441,9 @@ fn check_dandelion_merging(
         commands.entity(entity1).despawn();
         commands.entity(entity2).despawn();
 
+        // Spawn merge effect
+        spawn_merge_effect(&mut commands, merge_pos, new_size);
+
         // Create new merged dandelion
         commands.spawn((
             Sprite {
@@ -447,5 +458,43 @@ fn check_dandelion_merging(
 
         // Update count (2 removed, 1 added = net -1)
         game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+    }
+}
+
+/// Spawn merge effect at the given position
+fn spawn_merge_effect(commands: &mut Commands, position: Vec2, size: DandelionSize) {
+    let effect_scale = size.scale() * 1.5;
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(1.0, 1.0, 0.0, 0.8), // Bright yellow with transparency
+            custom_size: Some(Vec2::splat(80.0)),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(position.x, position.y, 20.0)).with_scale(Vec3::splat(effect_scale)),
+        MergeEffect {
+            timer: Timer::from_seconds(0.5, TimerMode::Once),
+            initial_scale: effect_scale,
+        },
+        EnemyEntity,
+    ));
+}
+
+/// Update merge effects
+fn update_merge_effects(mut commands: Commands, mut effect_query: Query<(Entity, &mut Transform, &mut MergeEffect, &mut Sprite)>, time: Res<Time>) {
+    for (entity, mut transform, mut effect, mut sprite) in effect_query.iter_mut() {
+        effect.timer.tick(time.delta());
+
+        let progress = effect.timer.elapsed_secs() / effect.timer.duration().as_secs_f32();
+
+        // Scale up and fade out
+        let scale = effect.initial_scale * (1.0 + progress * 2.0);
+        transform.scale = Vec3::splat(scale);
+
+        let alpha = 1.0 - progress;
+        sprite.color.set_alpha(alpha);
+
+        if effect.timer.finished() {
+            commands.entity(entity).despawn();
+        }
     }
 }
