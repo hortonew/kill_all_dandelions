@@ -13,7 +13,7 @@ impl Plugin for EnemiesPlugin {
         app.add_systems(OnEnter(GameState::Playing), setup_enemy_timer)
             .add_systems(
                 Update,
-                (spawn_dandelions, handle_dandelion_clicks, debug_dandelion_count)
+                (spawn_dandelions, handle_dandelion_clicks, update_seed_orbs, debug_dandelion_count)
                     .run_if(in_state(GameState::Playing))
                     .run_if(in_state(PauseState::Playing)),
             )
@@ -39,6 +39,15 @@ impl Default for DandelionSpawnTimer {
 #[derive(Component)]
 pub struct Dandelion {
     pub health: u32,
+    pub spawn_count: u32,
+}
+
+/// Component for seed orbs that spawn new dandelions
+#[derive(Component)]
+struct SeedOrb {
+    target_position: Vec2,
+    spawn_timer: Timer,
+    spawn_count: u32,
 }
 
 /// Marker component for enemy entities
@@ -87,11 +96,11 @@ fn spawn_dandelions(
             commands.spawn((
                 Sprite {
                     image: asset_server.load("dandelion.png"),
-                    color: Color::WHITE, // Use white to show the actual sprite
+                    color: Color::WHITE,
                     ..default()
                 },
-                Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(1.0)), // Higher Z to render above UI
-                Dandelion { health: 1 },
+                Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(1.0)),
+                Dandelion { health: 1, spawn_count: 2 },
                 EnemyEntity,
             ));
 
@@ -109,6 +118,7 @@ fn handle_dandelion_clicks(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
     mut game_data: ResMut<GameData>,
+    asset_server: Res<AssetServer>,
 ) {
     if mouse_input.just_pressed(MouseButton::Left) {
         if let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), camera_query.single()) {
@@ -133,12 +143,14 @@ fn handle_dandelion_clicks(
                             dandelion.health = dandelion.health.saturating_sub(1);
 
                             if dandelion.health == 0 {
+                                let spawn_count = dandelion.spawn_count;
+                                spawn_seed_orbs(&mut commands, &asset_server, dandelion_pos, spawn_count);
                                 commands.entity(entity).despawn();
                                 game_data.add_dandelion_kill();
                                 game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
                                 info!(
-                                    "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x",
-                                    dandelion_pos.x, dandelion_pos.y, game_data.score, game_data.combo
+                                    "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
+                                    dandelion_pos.x, dandelion_pos.y, game_data.score, game_data.combo, spawn_count
                                 );
                             }
 
@@ -168,4 +180,83 @@ fn cleanup_enemies(mut commands: Commands, enemy_entities: Query<Entity, With<En
     }
 
     info!("Enemies cleaned up");
+}
+
+/// Spawn seed orbs that will create new dandelions after a delay
+fn spawn_seed_orbs(commands: &mut Commands, asset_server: &Res<AssetServer>, origin: Vec2, count: u32) {
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..count {
+        // Generate random direction and distance for seed travel
+        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+        let distance = rng.gen_range(50.0..150.0);
+        let target_x = origin.x + angle.cos() * distance;
+        let target_y = origin.y + angle.sin() * distance;
+
+        commands.spawn((
+            Sprite {
+                image: asset_server.load("seed.png"),
+                color: Color::WHITE,
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(origin.x, origin.y, 15.0)).with_scale(Vec3::splat(1.0)),
+            SeedOrb {
+                target_position: Vec2::new(target_x, target_y),
+                spawn_timer: Timer::from_seconds(0.4, TimerMode::Once),
+                spawn_count: 1,
+            },
+            EnemyEntity,
+        ));
+        info!(
+            "Spawned seed orb at ({:.1}, {:.1}) targeting ({:.1}, {:.1})",
+            origin.x, origin.y, target_x, target_y
+        );
+    }
+}
+
+/// Update seed orb movement and spawning
+fn update_seed_orbs(
+    mut commands: Commands,
+    mut orb_query: Query<(Entity, &mut Transform, &mut SeedOrb)>,
+    time: Res<Time>,
+    asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
+) {
+    for (entity, mut transform, mut orb) in orb_query.iter_mut() {
+        orb.spawn_timer.tick(time.delta());
+
+        // Move orb toward target position
+        let current_pos = transform.translation.truncate();
+        let direction = (orb.target_position - current_pos).normalize_or_zero();
+        let move_speed = 150.0;
+        let new_pos = current_pos + direction * move_speed * time.delta_secs();
+        transform.translation = Vec3::new(new_pos.x, new_pos.y, 15.0);
+
+        // Add some visual feedback
+        if orb.spawn_timer.elapsed_secs() > 0.1 {
+            info!(
+                "Seed orb moving: ({:.1}, {:.1}) -> ({:.1}, {:.1})",
+                current_pos.x, current_pos.y, new_pos.x, new_pos.y
+            );
+        }
+
+        // Spawn new dandelion when timer finishes
+        if orb.spawn_timer.finished() {
+            commands.spawn((
+                Sprite {
+                    image: asset_server.load("dandelion.png"),
+                    color: Color::WHITE,
+                    ..default()
+                },
+                Transform::from_translation(Vec3::new(orb.target_position.x, orb.target_position.y, 10.0)).with_scale(Vec3::splat(1.0)),
+                Dandelion { health: 1, spawn_count: 2 },
+                EnemyEntity,
+            ));
+
+            // Remove the seed orb and update dandelion count
+            commands.entity(entity).despawn();
+            game_data.dandelion_count += 1;
+            info!("Seed orb spawned new dandelion at ({:.1}, {:.1})", orb.target_position.x, orb.target_position.y);
+        }
+    }
 }
