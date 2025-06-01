@@ -299,7 +299,6 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                             ));
                                         });
                                 });
-                            
                             // Flamethrower powerup row
                             parent
                                 .spawn((
