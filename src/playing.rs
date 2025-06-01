@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::GameState;
 use crate::pause_menu::PauseState;
-use crate::powerups::{PowerupType, SelectedPowerup};
+use crate::powerups::SelectedPowerup;
 
 /// Plugin for handling the main gameplay
 pub struct PlayingPlugin;
@@ -242,6 +242,7 @@ fn handle_game_input(keyboard_input: Res<ButtonInput<KeyCode>>, pause_state: Res
         match pause_state.get() {
             PauseState::Playing => next_pause_state.set(PauseState::Paused),
             PauseState::Paused => next_pause_state.set(PauseState::Playing),
+            PauseState::PowerupHelp => next_pause_state.set(PauseState::Paused),
         }
     }
 }
