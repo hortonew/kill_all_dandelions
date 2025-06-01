@@ -329,7 +329,12 @@ fn handle_dandelion_clicks(
 
     debug!("Click/touch at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
 
-    process_dandelion_hit(game_state, dandelion_query, world_pos);
+    // Check if using slash mode or regular click mode
+    if game_state.game_data.slash_mode {
+        process_slash_attack(game_state, dandelion_query, world_pos);
+    } else {
+        process_dandelion_hit(game_state, dandelion_query, world_pos);
+    }
 }
 
 /// Convert screen click to world coordinates
@@ -353,21 +358,72 @@ fn get_world_touch_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
 }
 
 /// Check if click hit a dandelion and process the hit
-fn process_dandelion_hit(game_state: DandelionGameState, mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>, click_pos: Vec2) {
+fn process_dandelion_hit(mut game_state: DandelionGameState, mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>, click_pos: Vec2) {
     for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
         let dandelion_pos = transform.translation.truncate();
         let collision_radius = dandelion.size.collision_radius();
         let distance = click_pos.distance(dandelion_pos);
 
         if distance <= collision_radius {
-            damage_dandelion(game_state, entity, &mut dandelion, dandelion_pos);
+            damage_dandelion(&mut game_state, entity, &mut dandelion, dandelion_pos);
             break; // Only hit one dandelion per click
         }
     }
 }
 
+/// Process slash attack hitting all dandelions along a diagonal line
+fn process_slash_attack(mut game_state: DandelionGameState, mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>, click_pos: Vec2) {
+    let slash_offset = game_state.game_data.slash_offset;
+
+    // Create diagonal slash line from top-right to bottom-left of click position
+    let start_pos = click_pos + Vec2::new(slash_offset, slash_offset);
+    let end_pos = click_pos - Vec2::new(slash_offset, slash_offset);
+
+    // Spawn visual slash effect
+    crate::playing::spawn_slash_effect(&mut game_state.commands, start_pos, end_pos);
+
+    let mut hit_count = 0;
+
+    for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
+        let dandelion_pos = transform.translation.truncate();
+        let collision_radius = dandelion.size.collision_radius();
+
+        // Calculate distance from dandelion to slash line
+        let distance_to_line = distance_point_to_line_segment(dandelion_pos, start_pos, end_pos);
+
+        if distance_to_line <= collision_radius {
+            damage_dandelion(&mut game_state, entity, &mut dandelion, dandelion_pos);
+            hit_count += 1;
+        }
+    }
+
+    if hit_count > 0 {
+        debug!(
+            "Slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
+            hit_count, start_pos.x, start_pos.y, end_pos.x, end_pos.y
+        );
+    }
+}
+
+/// Calculate distance from a point to a line segment
+fn distance_point_to_line_segment(point: Vec2, line_start: Vec2, line_end: Vec2) -> f32 {
+    let line_vec = line_end - line_start;
+    let line_length_squared = line_vec.length_squared();
+
+    if line_length_squared == 0.0 {
+        // Line segment is a point
+        return point.distance(line_start);
+    }
+
+    // Project point onto line segment
+    let t = ((point - line_start).dot(line_vec) / line_length_squared).clamp(0.0, 1.0);
+    let projection = line_start + t * line_vec;
+
+    point.distance(projection)
+}
+
 /// Apply damage to a dandelion and handle destruction
-fn damage_dandelion(game_state: DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
+fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
     dandelion.health = dandelion.health.saturating_sub(1);
 
     if dandelion.health == 0 {
@@ -376,7 +432,7 @@ fn damage_dandelion(game_state: DandelionGameState, entity: Entity, dandelion: &
 }
 
 /// Destroy a dandelion and spawn seeds
-fn destroy_dandelion(mut game_state: DandelionGameState, entity: Entity, dandelion: &Dandelion, position: Vec2) {
+fn destroy_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &Dandelion, position: Vec2) {
     let spawn_count = dandelion.size.spawn_count();
 
     game_state.area_tracker.total_area -= dandelion.size.visual_area();

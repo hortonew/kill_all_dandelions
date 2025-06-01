@@ -20,7 +20,7 @@ impl Plugin for PlayingPlugin {
         app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
             .add_systems(
                 Update,
-                (handle_game_input, update_ui, update_combo_timer)
+                (handle_game_input, update_ui, update_combo_timer, update_slash_effects)
                     .run_if(in_state(PauseState::Playing))
                     .run_if(in_state(GameState::Playing)),
             )
@@ -42,12 +42,15 @@ pub struct GameData {
     pub combo: u32,
     pub combo_timer: Timer,
     pub dandelion_count: u32,
+    pub slash_mode: bool,
+    pub slash_offset: f32,
 }
 
 impl GameData {
     const DANDELION_POINTS: u32 = 10;
     const INITIAL_COMBO_TIME: f32 = 3.0;
     const MAX_COMBO_TIME: f32 = 6.0;
+    const DEFAULT_SLASH_OFFSET: f32 = 30.0; // Distance from click point to slash endpoints (about 3 pointers)
 
     fn new() -> Self {
         Self {
@@ -55,6 +58,8 @@ impl GameData {
             combo: 0,
             combo_timer: Timer::from_seconds(Self::INITIAL_COMBO_TIME, TimerMode::Once),
             dandelion_count: 0,
+            slash_mode: true,
+            slash_offset: Self::DEFAULT_SLASH_OFFSET,
         }
     }
 
@@ -75,6 +80,10 @@ impl GameData {
         self.combo_timer.set_duration(std::time::Duration::from_secs_f32(Self::INITIAL_COMBO_TIME));
         self.combo_timer.reset();
     }
+
+    pub fn toggle_slash_mode(&mut self) {
+        self.slash_mode = !self.slash_mode;
+    }
 }
 
 /// UI components
@@ -89,6 +98,15 @@ struct ComboTimerBar;
 
 #[derive(Component)]
 struct CurbAppealText;
+
+#[derive(Component)]
+struct AttackModeText;
+
+/// Component for visual slash effect
+#[derive(Component)]
+struct SlashEffect {
+    timer: Timer,
+}
 
 /// Initialize game resources
 fn setup_game_resources(mut commands: Commands) {
@@ -192,6 +210,14 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextColor(Color::srgb(0.3, 0.9, 0.3)),
                         CurbAppealText,
                     ));
+
+                    // Attack mode display
+                    parent.spawn((
+                        Text::new("Mode: Click"),
+                        TextFont { font_size: 18.0, ..default() },
+                        TextColor(Color::srgb(0.9, 0.7, 0.3)),
+                        AttackModeText,
+                    ));
                 });
 
             // Middle game area where gameplay happens
@@ -232,7 +258,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                             ));
                             parent.spawn((
-                                Text::new("ESC: Return to Menu  |  Click dandelions to kill them!"),
+                                Text::new("ESC: Return to Menu  |  TAB: Switch Attack Mode  |  Click/Slash dandelions to kill them!"),
                                 TextFont { font_size: 16.0, ..default() },
                                 TextColor(Color::srgb(0.8, 0.8, 0.8)),
                             ));
@@ -247,6 +273,7 @@ fn handle_game_input(
     pause_state: Res<State<PauseState>>,
     mut next_pause_state: ResMut<NextState<PauseState>>,
     mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
+    mut game_data: ResMut<GameData>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         match pause_state.get() {
@@ -258,6 +285,13 @@ fn handle_game_input(
                 next_pause_state.set(PauseState::Playing);
             }
         }
+    }
+
+    // Toggle slash mode with Tab key
+    if keyboard_input.just_pressed(KeyCode::Tab) {
+        game_data.toggle_slash_mode();
+        let mode_text = if game_data.slash_mode { "slash" } else { "click" };
+        info!("Switched to {} mode", mode_text);
     }
 }
 
@@ -286,14 +320,20 @@ fn calculate_curb_appeal(dandelion_query: &Query<&crate::enemies::Dandelion>) ->
 }
 
 /// Update score display
-fn update_score_display(game_data: &GameData, mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>) {
+fn update_score_display(
+    game_data: &GameData,
+    mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+) {
     if let Ok(mut text) = score_query.single_mut() {
         **text = format!("Score: {}", game_data.score);
     }
 }
 
 /// Update combo display
-fn update_combo_display(game_data: &GameData, mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>) {
+fn update_combo_display(
+    game_data: &GameData,
+    mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+) {
     if let Ok(mut text) = combo_query.single_mut() {
         **text = format!("Combo: {}x", game_data.combo);
     }
@@ -314,7 +354,7 @@ fn update_combo_timer_display(game_data: &GameData, mut combo_timer_bar_query: Q
 /// Update curb appeal display
 fn update_curb_appeal_display(
     dandelion_query: Query<&crate::enemies::Dandelion>,
-    mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
+    mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>, Without<AttackModeText>)>,
 ) {
     if let Ok(mut text) = curb_appeal_query.single_mut() {
         let curb_appeal = calculate_curb_appeal(&dandelion_query);
@@ -322,19 +362,32 @@ fn update_curb_appeal_display(
     }
 }
 
+/// Update attack mode display
+fn update_attack_mode_display(
+    game_data: &GameData,
+    mut mode_query: Query<&mut Text, (With<AttackModeText>, Without<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
+) {
+    if let Ok(mut text) = mode_query.single_mut() {
+        let mode_text = if game_data.slash_mode { "Slash" } else { "Click" };
+        **text = format!("Mode: {}", mode_text);
+    }
+}
+
 /// Update game UI elements
 fn update_ui(
     game_data: Res<GameData>,
-    score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
-    combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>,
+    score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+    combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>, Without<AttackModeText>)>,
     combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
-    curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
+    curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>, Without<AttackModeText>)>,
+    mode_query: Query<&mut Text, (With<AttackModeText>, Without<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
     dandelion_query: Query<&crate::enemies::Dandelion>,
 ) {
     update_score_display(&game_data, score_query);
     update_combo_display(&game_data, combo_query);
     update_combo_timer_display(&game_data, combo_timer_bar_query);
     update_curb_appeal_display(dandelion_query, curb_appeal_query);
+    update_attack_mode_display(&game_data, mode_query);
 }
 
 /// Update combo timer and reset combo when it expires
@@ -347,6 +400,43 @@ fn update_combo_timer(mut game_data: ResMut<GameData>, time: Res<Time>) {
             info!("Combo expired! Reset to 0");
         }
     }
+}
+
+/// Update slash effects
+fn update_slash_effects(mut commands: Commands, mut slash_query: Query<(Entity, &mut SlashEffect, &mut Sprite)>, time: Res<Time>) {
+    for (entity, mut slash_effect, mut sprite) in slash_query.iter_mut() {
+        slash_effect.timer.tick(time.delta());
+
+        // Fade out the slash effect over time
+        let progress = slash_effect.timer.elapsed_secs() / slash_effect.timer.duration().as_secs_f32();
+        sprite.color.set_alpha(1.0 - progress);
+
+        if slash_effect.timer.finished() {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Spawn a visual slash effect
+pub fn spawn_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec2) {
+    let direction = end_pos - start_pos;
+    let length = direction.length();
+    let angle = direction.y.atan2(direction.x);
+    let center = (start_pos + end_pos) / 2.0;
+
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(1.0, 1.0, 0.0, 0.8), // Bright yellow slash
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(center.x, center.y, 20.0))
+            .with_rotation(Quat::from_rotation_z(angle))
+            .with_scale(Vec3::new(length, 4.0, 1.0)), // 4 pixel wide line
+        SlashEffect {
+            timer: Timer::from_seconds(0.2, TimerMode::Once), // 200ms duration
+        },
+        GameEntity,
+    ));
 }
 
 /// Cleanup game entities when exiting playing state
