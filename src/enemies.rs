@@ -11,15 +11,19 @@ pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (setup_enemy_timer, setup_area_tracker))
+        app.add_systems(OnEnter(GameState::Playing), (setup_enemy_timer, setup_area_tracker, setup_variety_spawner))
             .add_systems(
                 Update,
                 (
                     spawn_dandelions,
+                    spawn_variety_dandelions,
                     handle_dandelion_clicks,
                     update_seed_orbs,
                     check_dandelion_merging,
                     update_merge_effects,
+                    update_moving_dandelions,
+                    check_moving_dandelion_collisions,
+                    update_upgrade_cooldowns,
                     debug_dandelion_count,
                 )
                     .run_if(in_state(GameState::Playing))
@@ -39,6 +43,24 @@ impl Default for DandelionSpawnTimer {
     fn default() -> Self {
         Self {
             timer: Timer::from_seconds(2.0, TimerMode::Repeating),
+        }
+    }
+}
+
+/// Timer resource for spawning variety of dandelions
+#[derive(Resource)]
+struct VarietySpawnTimer {
+    timer: Timer,
+    enabled: bool,
+    difficulty_threshold: u32,
+}
+
+impl Default for VarietySpawnTimer {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(10.0, TimerMode::Repeating),
+            enabled: false,
+            difficulty_threshold: 500, // Enable when score reaches 500
         }
     }
 }
@@ -163,6 +185,41 @@ struct MergeEffect {
     initial_scale: f32,
 }
 
+/// Component for moving dandelions (huge size only)
+#[derive(Component)]
+struct MovingDandelion {
+    velocity: Vec2,
+    speed: f32,
+    direction_change_timer: Timer,
+}
+
+impl Default for MovingDandelion {
+    fn default() -> Self {
+        let mut rng = rand::thread_rng();
+        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+        let speed = 50.0;
+        Self {
+            velocity: Vec2::new(angle.cos(), angle.sin()) * speed,
+            speed,
+            direction_change_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
+        }
+    }
+}
+
+/// Component to prevent rapid successive upgrades
+#[derive(Component)]
+struct UpgradeCooldown {
+    timer: Timer,
+}
+
+impl Default for UpgradeCooldown {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(1.0, TimerMode::Once),
+        }
+    }
+}
+
 /// Setup the enemy spawn timer
 fn setup_enemy_timer(mut commands: Commands) {
     commands.insert_resource(DandelionSpawnTimer::default());
@@ -171,6 +228,11 @@ fn setup_enemy_timer(mut commands: Commands) {
 /// Setup the dandelion area tracker
 fn setup_area_tracker(mut commands: Commands) {
     commands.insert_resource(DandelionAreaTracker::default());
+}
+
+/// Setup the variety spawner
+fn setup_variety_spawner(mut commands: Commands) {
+    commands.insert_resource(VarietySpawnTimer::default());
 }
 
 /// Spawn dandelions at random positions
@@ -286,6 +348,7 @@ fn debug_dandelion_count(dandelions: Query<&Dandelion>, time: Res<Time>) {
 fn cleanup_enemies(mut commands: Commands, enemy_entities: Query<Entity, With<EnemyEntity>>) {
     commands.remove_resource::<DandelionSpawnTimer>();
     commands.remove_resource::<DandelionAreaTracker>();
+    commands.remove_resource::<VarietySpawnTimer>();
 
     for entity in &enemy_entities {
         commands.entity(entity).despawn();
@@ -445,7 +508,7 @@ fn check_dandelion_merging(
         spawn_merge_effect(&mut commands, merge_pos, new_size);
 
         // Create new merged dandelion
-        commands.spawn((
+        let mut entity_commands = commands.spawn((
             Sprite {
                 image: asset_server.load(new_size.asset_path()),
                 color: Color::WHITE,
@@ -455,6 +518,11 @@ fn check_dandelion_merging(
             Dandelion { health: 1, size: new_size },
             EnemyEntity,
         ));
+
+        // Add moving component if huge size
+        if new_size == DandelionSize::Huge {
+            entity_commands.insert(MovingDandelion::default());
+        }
 
         // Update count (2 removed, 1 added = net -1)
         game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
@@ -495,6 +563,203 @@ fn update_merge_effects(mut commands: Commands, mut effect_query: Query<(Entity,
 
         if effect.timer.finished() {
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Update moving dandelions
+fn update_moving_dandelions(mut moving_query: Query<(&mut Transform, &mut MovingDandelion)>, time: Res<Time>, windows: Query<&Window>) {
+    if let Ok(window) = windows.single() {
+        let margin = 50.0;
+        let top_ui_height = window.height() * 0.12;
+        let bottom_ui_height = window.height() * 0.08;
+
+        let bounds = Rect::new(
+            -window.width() / 2.0 + margin,
+            -window.height() / 2.0 + bottom_ui_height + margin,
+            window.width() / 2.0 - margin,
+            window.height() / 2.0 - top_ui_height - margin,
+        );
+
+        for (mut transform, mut moving) in moving_query.iter_mut() {
+            moving.direction_change_timer.tick(time.delta());
+
+            // Change direction randomly
+            if moving.direction_change_timer.just_finished() {
+                let mut rng = rand::thread_rng();
+                let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+                moving.velocity = Vec2::new(angle.cos(), angle.sin()) * moving.speed;
+            }
+
+            let delta = moving.velocity * time.delta_secs();
+            let new_pos = transform.translation.truncate() + delta;
+
+            // Bounce off boundaries
+            let mut velocity = moving.velocity;
+            if new_pos.x < bounds.min.x || new_pos.x > bounds.max.x {
+                velocity.x = -velocity.x;
+            }
+            if new_pos.y < bounds.min.y || new_pos.y > bounds.max.y {
+                velocity.y = -velocity.y;
+            }
+            moving.velocity = velocity;
+
+            // Update position with boundary clamping
+            let clamped_pos = new_pos.clamp(bounds.min, bounds.max);
+            transform.translation = Vec3::new(clamped_pos.x, clamped_pos.y, transform.translation.z);
+        }
+    }
+}
+
+/// Check collisions between moving huge dandelions and stationary ones
+fn check_moving_dandelion_collisions(
+    mut commands: Commands,
+    moving_query: Query<(Entity, &Transform, &Dandelion), With<MovingDandelion>>,
+    mut stationary_query: Query<(Entity, &Transform, &mut Dandelion), (Without<MovingDandelion>, With<Dandelion>, Without<UpgradeCooldown>)>,
+    asset_server: Res<AssetServer>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+) {
+    let mut upgrades_this_frame = 0;
+    const MAX_UPGRADES_PER_FRAME: usize = 10; // Limit to prevent performance issues
+
+    'outer: for (_moving_entity, moving_transform, moving_dandelion) in moving_query.iter() {
+        if moving_dandelion.size != DandelionSize::Huge {
+            continue;
+        }
+
+        let moving_pos = moving_transform.translation.truncate();
+        let moving_radius = moving_dandelion.size.collision_radius();
+
+        for (stationary_entity, stationary_transform, mut stationary_dandelion) in stationary_query.iter_mut() {
+            if upgrades_this_frame >= MAX_UPGRADES_PER_FRAME {
+                break 'outer;
+            }
+
+            let stationary_pos = stationary_transform.translation.truncate();
+            let stationary_radius = stationary_dandelion.size.collision_radius();
+
+            let distance = moving_pos.distance(stationary_pos);
+            let collision_distance = moving_radius + stationary_radius;
+
+            if distance <= collision_distance {
+                // Upgrade the stationary dandelion if possible
+                if let Some(new_size) = stationary_dandelion.size.next_size() {
+                    let old_size = stationary_dandelion.size;
+
+                    // Update area tracker
+                    area_tracker.total_area -= stationary_dandelion.size.visual_area();
+                    area_tracker.total_area += new_size.visual_area();
+
+                    // Update the dandelion
+                    stationary_dandelion.size = new_size;
+
+                    // Add upgrade cooldown to prevent immediate re-upgrading
+                    commands.entity(stationary_entity).insert(UpgradeCooldown::default());
+
+                    // Update the sprite and transform
+                    commands.entity(stationary_entity).insert((
+                        Sprite {
+                            image: asset_server.load(new_size.asset_path()),
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                        Transform::from_translation(Vec3::new(stationary_pos.x, stationary_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
+                    ));
+
+                    // If it became huge, make it moving too
+                    if new_size == DandelionSize::Huge {
+                        commands.entity(stationary_entity).insert(MovingDandelion::default());
+                    }
+
+                    upgrades_this_frame += 1;
+                    info!("Moving huge dandelion upgraded a {:?} to {:?}", old_size, new_size);
+                }
+            }
+        }
+    }
+}
+
+/// Update upgrade cooldowns and remove them when expired
+fn update_upgrade_cooldowns(mut commands: Commands, mut cooldown_query: Query<(Entity, &mut UpgradeCooldown)>, time: Res<Time>) {
+    for (entity, mut cooldown) in cooldown_query.iter_mut() {
+        cooldown.timer.tick(time.delta());
+
+        if cooldown.timer.finished() {
+            commands.entity(entity).remove::<UpgradeCooldown>();
+        }
+    }
+}
+
+/// Spawn variety of dandelions when difficulty threshold is met
+fn spawn_variety_dandelions(
+    mut commands: Commands,
+    mut variety_timer: ResMut<VarietySpawnTimer>,
+    time: Res<Time>,
+    windows: Query<&Window>,
+    asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+) {
+    // Check if we should enable variety spawning
+    if !variety_timer.enabled && game_data.score >= variety_timer.difficulty_threshold {
+        variety_timer.enabled = true;
+        info!("Variety spawning enabled at score {}", game_data.score);
+    }
+
+    if !variety_timer.enabled {
+        return;
+    }
+
+    variety_timer.timer.tick(time.delta());
+
+    if variety_timer.timer.just_finished() {
+        if let Ok(window) = windows.single() {
+            let mut rng = rand::thread_rng();
+
+            // Calculate safe spawn area
+            let margin = 30.0;
+            let top_ui_height = window.height() * 0.12;
+            let bottom_ui_height = window.height() * 0.08;
+
+            let min_x = -window.width() / 2.0 + margin;
+            let max_x = window.width() / 2.0 - margin;
+            let min_y = -window.height() / 2.0 + bottom_ui_height + margin;
+            let max_y = window.height() / 2.0 - top_ui_height - margin;
+
+            // Spawn one of each size
+            let sizes = [
+                DandelionSize::Tiny,
+                DandelionSize::Small,
+                DandelionSize::Medium,
+                DandelionSize::Large,
+                DandelionSize::Huge,
+            ];
+
+            for size in sizes {
+                let x = rng.gen_range(min_x..max_x);
+                let y = rng.gen_range(min_y..max_y);
+
+                let mut entity_commands = commands.spawn((
+                    Sprite {
+                        image: asset_server.load(size.asset_path()),
+                        color: Color::WHITE,
+                        ..default()
+                    },
+                    Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(size.scale())),
+                    Dandelion { health: 1, size },
+                    EnemyEntity,
+                ));
+
+                // Add moving component if huge size
+                if size == DandelionSize::Huge {
+                    entity_commands.insert(MovingDandelion::default());
+                }
+
+                game_data.dandelion_count += 1;
+                area_tracker.total_area += size.visual_area();
+            }
+
+            info!("Spawned variety pack of dandelions (difficulty mode)");
         }
     }
 }
