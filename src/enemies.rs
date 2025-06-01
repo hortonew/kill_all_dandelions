@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashSet;
@@ -283,54 +284,82 @@ fn spawn_dandelions(
     }
 }
 
+/// System parameter struct to group related resources
+#[derive(SystemParam)]
+struct DandelionGameState<'w, 's> {
+    commands: Commands<'w, 's>,
+    game_data: ResMut<'w, GameData>,
+    asset_server: Res<'w, AssetServer>,
+    area_tracker: ResMut<'w, DandelionAreaTracker>,
+}
+
 /// Handle clicks on dandelions
 fn handle_dandelion_clicks(
-    mut commands: Commands,
-    mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
+    game_state: DandelionGameState,
+    dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut game_data: ResMut<GameData>,
-    asset_server: Res<AssetServer>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
 ) {
-    if mouse_input.just_pressed(MouseButton::Left) {
-        if let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), camera_query.single()) {
-            if let Some(cursor_pos) = window.cursor_position() {
-                // Convert screen coordinates to world coordinates
-                if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
-                    info!("Click at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
+    if !mouse_input.just_pressed(MouseButton::Left) {
+        return;
+    }
 
-                    // Check if click hit any dandelion
-                    for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
-                        let dandelion_pos = transform.translation.truncate();
-                        let collision_radius = dandelion.size.collision_radius();
+    let world_pos = match get_world_click_position(&windows, &camera_query) {
+        Some(pos) => pos,
+        None => return,
+    };
 
-                        // Simple circular collision detection using the dandelion's size
-                        let distance = world_pos.distance(dandelion_pos);
-                        if distance <= collision_radius {
-                            dandelion.health = dandelion.health.saturating_sub(1);
+    info!("Click at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
 
-                            if dandelion.health == 0 {
-                                let spawn_count = dandelion.size.spawn_count();
-                                area_tracker.total_area -= dandelion.size.visual_area();
-                                spawn_seed_orbs(&mut commands, &asset_server, dandelion_pos, spawn_count);
-                                commands.entity(entity).despawn();
-                                game_data.add_dandelion_kill();
-                                game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
-                                info!(
-                                    "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
-                                    dandelion_pos.x, dandelion_pos.y, game_data.score, game_data.combo, spawn_count
-                                );
-                            }
+    process_dandelion_hit(game_state, dandelion_query, world_pos);
+}
 
-                            break; // Only hit one dandelion per click
-                        }
-                    }
-                }
-            }
+/// Convert screen click to world coordinates
+fn get_world_click_position(windows: &Query<&Window>, camera_query: &Query<(&Camera, &GlobalTransform)>) -> Option<Vec2> {
+    let window = windows.single().ok()?;
+    let (camera, camera_transform) = camera_query.single().ok()?;
+    let cursor_pos = window.cursor_position()?;
+    camera.viewport_to_world_2d(camera_transform, cursor_pos).ok()
+}
+
+/// Check if click hit a dandelion and process the hit
+fn process_dandelion_hit(game_state: DandelionGameState, mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>, click_pos: Vec2) {
+    for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
+        let dandelion_pos = transform.translation.truncate();
+        let collision_radius = dandelion.size.collision_radius();
+        let distance = click_pos.distance(dandelion_pos);
+
+        if distance <= collision_radius {
+            damage_dandelion(game_state, entity, &mut dandelion, dandelion_pos);
+            break; // Only hit one dandelion per click
         }
     }
+}
+
+/// Apply damage to a dandelion and handle destruction
+fn damage_dandelion(game_state: DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
+    dandelion.health = dandelion.health.saturating_sub(1);
+
+    if dandelion.health == 0 {
+        destroy_dandelion(game_state, entity, dandelion, position);
+    }
+}
+
+/// Destroy a dandelion and spawn seeds
+fn destroy_dandelion(mut game_state: DandelionGameState, entity: Entity, dandelion: &Dandelion, position: Vec2) {
+    let spawn_count = dandelion.size.spawn_count();
+
+    game_state.area_tracker.total_area -= dandelion.size.visual_area();
+    spawn_seed_orbs(&mut game_state.commands, &game_state.asset_server, position, spawn_count);
+    game_state.commands.entity(entity).despawn();
+    game_state.game_data.add_dandelion_kill();
+    game_state.game_data.dandelion_count = game_state.game_data.dandelion_count.saturating_sub(1);
+
+    info!(
+        "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
+        position.x, position.y, game_state.game_data.score, game_state.game_data.combo, spawn_count
+    );
 }
 
 /// Debug system to count dandelions (runs less frequently)
