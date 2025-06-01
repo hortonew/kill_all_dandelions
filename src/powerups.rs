@@ -6,6 +6,7 @@ use crate::GameState;
 use crate::enemies::{Dandelion, DandelionAreaTracker};
 use crate::pause_menu::PauseState;
 use crate::playing::GameData;
+use bevy::ecs::system::SystemParam;
 
 /// Plugin for handling powerup spawning and behavior
 pub struct PowerupsPlugin;
@@ -98,6 +99,51 @@ struct PowerupEffect {
 #[derive(Component)]
 struct PowerupEntity;
 
+/// System parameter for powerup spawning operations
+#[derive(SystemParam)]
+struct PowerupSpawner<'w, 's> {
+    commands: Commands<'w, 's>,
+    spawn_timer: ResMut<'w, PowerupSpawnTimer>,
+    time: Res<'w, Time>,
+    windows: Query<'w, 's, &'static Window>,
+    asset_server: Res<'w, AssetServer>,
+}
+
+/// System parameter for click handling operations
+#[derive(SystemParam)]
+struct ClickHandler<'w, 's> {
+    commands: Commands<'w, 's>,
+    mouse_input: Res<'w, ButtonInput<MouseButton>>,
+    windows: Query<'w, 's, &'static Window>,
+    camera_query: Query<'w, 's, (&'static Camera, &'static GlobalTransform)>,
+    selected_powerup: ResMut<'w, SelectedPowerup>,
+}
+
+/// System parameter for rabbit behavior operations
+#[derive(SystemParam)]
+struct RabbitBehavior<'w, 's> {
+    commands: Commands<'w, 's>,
+    rabbit_query: Query<'w, 's, (Entity, &'static mut Transform, &'static mut Rabbit)>,
+    dandelion_query: Query<'w, 's, (Entity, &'static Transform, &'static Dandelion), (With<Dandelion>, Without<Rabbit>)>,
+    time: Res<'w, Time>,
+    asset_server: Res<'w, AssetServer>,
+    game_data: ResMut<'w, GameData>,
+    area_tracker: ResMut<'w, DandelionAreaTracker>,
+    rabbit_targeting: ResMut<'w, RabbitTargeting>,
+}
+
+/// System parameter for fire ignition operations
+#[derive(SystemParam)]
+struct FireBehavior<'w, 's> {
+    commands: Commands<'w, 's>,
+    fire_query: Query<'w, 's, (Entity, &'static mut Transform, &'static mut FireIgnition, &'static mut Sprite), With<FireIgnition>>,
+    dandelion_query: Query<'w, 's, (Entity, &'static Transform, &'static Dandelion), (With<Dandelion>, Without<FireIgnition>)>,
+    time: Res<'w, Time>,
+    asset_server: Res<'w, AssetServer>,
+    game_data: ResMut<'w, GameData>,
+    area_tracker: ResMut<'w, DandelionAreaTracker>,
+}
+
 /// Resource to track dandelion targeting to prevent rabbits from swarming the same target
 #[derive(Resource, Default)]
 struct RabbitTargeting {
@@ -178,17 +224,11 @@ fn setup_powerup_timer(mut commands: Commands) {
 }
 
 /// Spawn powerups at random positions
-fn spawn_powerups(
-    mut commands: Commands,
-    mut spawn_timer: ResMut<PowerupSpawnTimer>,
-    time: Res<Time>,
-    windows: Query<&Window>,
-    asset_server: Res<AssetServer>,
-) {
-    spawn_timer.timer.tick(time.delta());
+fn spawn_powerups(mut spawner: PowerupSpawner) {
+    spawner.spawn_timer.timer.tick(spawner.time.delta());
 
-    if spawn_timer.timer.just_finished() {
-        if let Ok(window) = windows.single() {
+    if spawner.spawn_timer.timer.just_finished() {
+        if let Ok(window) = spawner.windows.single() {
             let mut rng = rand::thread_rng();
 
             // Calculate safe spawn area similar to dandelions
@@ -207,9 +247,9 @@ fn spawn_powerups(
             let powerup_type = PowerupType::random();
 
             // Spawn the powerup
-            commands.spawn((
+            spawner.commands.spawn((
                 Sprite {
-                    image: asset_server.load(powerup_type.asset_path()),
+                    image: spawner.asset_server.load(powerup_type.asset_path()),
                     ..default()
                 },
                 Transform::from_translation(Vec3::new(x, y, 15.0)).with_scale(Vec3::splat(0.8)),
@@ -218,9 +258,9 @@ fn spawn_powerups(
             ));
 
             // Spawn blue effect
-            commands.spawn((
+            spawner.commands.spawn((
                 Sprite {
-                    image: asset_server.load("seed.png"),
+                    image: spawner.asset_server.load("seed.png"),
                     color: Color::srgba(0.0, 0.5, 1.0, 0.8),
                     ..default()
                 },
@@ -238,19 +278,12 @@ fn spawn_powerups(
 }
 
 /// Handle clicks on powerups to select them
-fn handle_powerup_clicks(
-    mut commands: Commands,
-    powerup_query: Query<(Entity, &Powerup, &Transform)>,
-    mouse_input: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut selected_powerup: ResMut<SelectedPowerup>,
-) {
-    if !mouse_input.just_pressed(MouseButton::Left) {
+fn handle_powerup_clicks(mut click_handler: ClickHandler, powerup_query: Query<(Entity, &Powerup, &Transform)>) {
+    if !click_handler.mouse_input.just_pressed(MouseButton::Left) {
         return;
     }
 
-    let world_pos = match get_world_click_position(&windows, &camera_query) {
+    let world_pos = match get_world_click_position(&click_handler.windows, &click_handler.camera_query) {
         Some(pos) => pos,
         None => return,
     };
@@ -262,10 +295,10 @@ fn handle_powerup_clicks(
 
         if distance <= click_radius {
             // Select the powerup
-            selected_powerup.powerup_type = Some(powerup.powerup_type);
+            click_handler.selected_powerup.powerup_type = Some(powerup.powerup_type);
 
             // Remove the powerup from the world
-            commands.entity(entity).despawn();
+            click_handler.commands.entity(entity).despawn();
 
             info!("Selected {:?} powerup", powerup.powerup_type);
             break;
@@ -282,29 +315,22 @@ fn get_world_click_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
 }
 
 /// Handle using selected powerups
-fn handle_powerup_usage(
-    mut commands: Commands,
-    mouse_input: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut selected_powerup: ResMut<SelectedPowerup>,
-    asset_server: Res<AssetServer>,
-) {
-    if !mouse_input.just_pressed(MouseButton::Left) {
+fn handle_powerup_usage(mut click_handler: ClickHandler, asset_server: Res<AssetServer>) {
+    if !click_handler.mouse_input.just_pressed(MouseButton::Left) {
         return;
     }
 
-    if let Some(powerup_type) = selected_powerup.powerup_type {
-        let world_pos = match get_world_click_position(&windows, &camera_query) {
+    if let Some(powerup_type) = click_handler.selected_powerup.powerup_type {
+        let world_pos = match get_world_click_position(&click_handler.windows, &click_handler.camera_query) {
             Some(pos) => pos,
             None => return,
         };
 
         // Use the powerup at the clicked location
-        use_powerup(powerup_type, world_pos, &mut commands, &asset_server);
+        use_powerup(powerup_type, world_pos, &mut click_handler.commands, &asset_server);
 
         // Clear the selected powerup
-        selected_powerup.powerup_type = None;
+        click_handler.selected_powerup.powerup_type = None;
 
         info!("Used {:?} powerup at ({:.1}, {:.1})", powerup_type, world_pos.x, world_pos.y);
     }
@@ -379,35 +405,34 @@ fn spawn_fire_ignition(commands: &mut Commands, asset_server: &AssetServer, posi
 }
 
 /// Update rabbit behavior - target and move towards dandelions with team coordination
-fn update_rabbits(
-    mut commands: Commands,
-    mut rabbit_query: Query<(Entity, &mut Transform, &mut Rabbit)>,
-    dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<Rabbit>)>,
-    time: Res<Time>,
-    asset_server: Res<AssetServer>,
-    mut game_data: ResMut<GameData>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
-    mut rabbit_targeting: ResMut<RabbitTargeting>,
-) {
+fn update_rabbits(mut rabbit_behavior: RabbitBehavior) {
     // First, clean up any invalid targets from the targeting resource
-    let valid_dandelions: std::collections::HashSet<Entity> = dandelion_query.iter().map(|(e, _, _)| e).collect();
-    rabbit_targeting.targets.retain(|&dandelion, _| valid_dandelions.contains(&dandelion));
+    let valid_dandelions: std::collections::HashSet<Entity> = rabbit_behavior.dandelion_query.iter().map(|(e, _, _)| e).collect();
+    rabbit_behavior
+        .rabbit_targeting
+        .targets
+        .retain(|&dandelion, _| valid_dandelions.contains(&dandelion));
 
-    for (rabbit_entity, mut rabbit_transform, mut rabbit) in rabbit_query.iter_mut() {
-        rabbit.lifetime.tick(time.delta());
+    for (rabbit_entity, mut rabbit_transform, mut rabbit) in rabbit_behavior.rabbit_query.iter_mut() {
+        rabbit.lifetime.tick(rabbit_behavior.time.delta());
 
         // Find optimal dandelion target if no current target or target is invalid
-        if rabbit.target.is_none() || dandelion_query.get(rabbit.target.unwrap()).is_err() {
+        if rabbit.target.is_none() || rabbit_behavior.dandelion_query.get(rabbit.target.unwrap()).is_err() {
             // Release any previous target claim
             if let Some(old_target) = rabbit.target {
-                rabbit_targeting.release_target(old_target);
+                rabbit_behavior.rabbit_targeting.release_target(old_target);
             }
 
-            let new_target = find_best_dandelion_target(rabbit_entity, rabbit_transform.translation.truncate(), &dandelion_query, &rabbit_targeting);
+            let new_target = find_best_dandelion_target(
+                rabbit_entity,
+                rabbit_transform.translation.truncate(),
+                &rabbit_behavior.dandelion_query,
+                &rabbit_behavior.rabbit_targeting,
+            );
 
             // Claim the new target
             if let Some(target_entity) = new_target {
-                rabbit_targeting.claim_target(rabbit_entity, target_entity);
+                rabbit_behavior.rabbit_targeting.claim_target(rabbit_entity, target_entity);
             }
 
             rabbit.target = new_target;
@@ -415,13 +440,13 @@ fn update_rabbits(
 
         // Move towards target
         if let Some(target_entity) = rabbit.target {
-            if let Ok((_, target_transform, target_dandelion)) = dandelion_query.get(target_entity) {
+            if let Ok((_, target_transform, target_dandelion)) = rabbit_behavior.dandelion_query.get(target_entity) {
                 let rabbit_pos = rabbit_transform.translation.truncate();
                 let target_pos = target_transform.translation.truncate();
                 let direction = (target_pos - rabbit_pos).normalize_or_zero();
 
                 // Move towards target
-                let movement = direction * rabbit.speed * time.delta_secs();
+                let movement = direction * rabbit.speed * rabbit_behavior.time.delta_secs();
                 rabbit_transform.translation += movement.extend(0.0);
 
                 // Check if rabbit reached the dandelion
@@ -429,15 +454,15 @@ fn update_rabbits(
                 if distance <= 25.0 {
                     // Close enough to eat
                     // Release the target claim
-                    rabbit_targeting.release_target(target_entity);
+                    rabbit_behavior.rabbit_targeting.release_target(target_entity);
 
                     // Remove the dandelion
-                    commands.entity(target_entity).despawn();
+                    rabbit_behavior.commands.entity(target_entity).despawn();
 
                     // Update tracking - use actual dandelion size
-                    area_tracker.total_area -= target_dandelion.size.visual_area();
-                    game_data.add_dandelion_kill();
-                    game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+                    rabbit_behavior.area_tracker.total_area -= target_dandelion.size.visual_area();
+                    rabbit_behavior.game_data.add_dandelion_kill();
+                    rabbit_behavior.game_data.dandelion_count = rabbit_behavior.game_data.dandelion_count.saturating_sub(1);
 
                     rabbit.dandelions_eaten += 1;
                     rabbit.target = None; // Look for new target
@@ -457,14 +482,14 @@ fn update_rabbits(
                     // If rabbit ate 2 dandelions, spawn a new rabbit
                     if rabbit.dandelions_eaten >= 2 {
                         let spawn_pos = rabbit_transform.translation.truncate();
-                        spawn_rabbits(&mut commands, &asset_server, spawn_pos);
+                        spawn_rabbits(&mut rabbit_behavior.commands, &rabbit_behavior.asset_server, spawn_pos);
                         info!("Rabbit spawned a new rabbit after eating 2 dandelions!");
 
                         // Clear all targets for this rabbit before removing it
-                        rabbit_targeting.clear_rabbit_targets(rabbit_entity);
+                        rabbit_behavior.rabbit_targeting.clear_rabbit_targets(rabbit_entity);
 
                         // Remove this rabbit after spawning
-                        commands.entity(rabbit_entity).despawn();
+                        rabbit_behavior.commands.entity(rabbit_entity).despawn();
                         continue;
                     }
                 }
@@ -515,18 +540,10 @@ fn find_best_dandelion_target(
 }
 
 /// Update fire ignition effects and damage dandelions
-fn update_fire_ignition(
-    mut commands: Commands,
-    mut fire_query: Query<(Entity, &mut Transform, &mut FireIgnition, &mut Sprite), With<FireIgnition>>,
-    dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<FireIgnition>)>,
-    time: Res<Time>,
-    asset_server: Res<AssetServer>,
-    mut game_data: ResMut<GameData>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
-) {
-    for (_fire_entity, mut fire_transform, mut fire, mut sprite) in fire_query.iter_mut() {
-        fire.damage_timer.tick(time.delta());
-        fire.lifetime.tick(time.delta());
+fn update_fire_ignition(mut fire_behavior: FireBehavior) {
+    for (_fire_entity, mut fire_transform, mut fire, mut sprite) in fire_behavior.fire_query.iter_mut() {
+        fire.damage_timer.tick(fire_behavior.time.delta());
+        fire.lifetime.tick(fire_behavior.time.delta());
 
         // Expand the fire effect
         let lifetime_progress = fire.lifetime.elapsed_secs() / fire.lifetime.duration().as_secs_f32();
@@ -545,7 +562,7 @@ fn update_fire_ignition(
             let fire_pos = fire_transform.translation.truncate();
             let mut dandelions_to_ignite = Vec::new();
 
-            for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
+            for (dandelion_entity, dandelion_transform, dandelion) in fire_behavior.dandelion_query.iter() {
                 let dandelion_pos = dandelion_transform.translation.truncate();
                 let distance = fire_pos.distance(dandelion_pos);
 
@@ -557,12 +574,12 @@ fn update_fire_ignition(
             // Remove ignited dandelions and potentially spawn chain reactions
             for (dandelion_entity, dandelion_pos, dandelion_size) in dandelions_to_ignite {
                 // Remove the dandelion
-                commands.entity(dandelion_entity).despawn();
+                fire_behavior.commands.entity(dandelion_entity).despawn();
 
                 // Update tracking
-                area_tracker.total_area -= dandelion_size.visual_area();
-                game_data.add_dandelion_kill();
-                game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+                fire_behavior.area_tracker.total_area -= dandelion_size.visual_area();
+                fire_behavior.game_data.add_dandelion_kill();
+                fire_behavior.game_data.dandelion_count = fire_behavior.game_data.dandelion_count.saturating_sub(1);
 
                 info!(
                     "Fire ignited a {:?} dandelion at ({:.1}, {:.1})",
@@ -576,9 +593,9 @@ fn update_fire_ignition(
                     ..Default::default()
                 };
 
-                commands.spawn((
+                fire_behavior.commands.spawn((
                     Sprite {
-                        image: asset_server.load("seed.png"),
+                        image: fire_behavior.asset_server.load("seed.png"),
                         color: Color::srgba(1.0, 0.5, 0.1, 0.6),
                         ..default()
                     },
