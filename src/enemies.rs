@@ -293,24 +293,40 @@ struct DandelionGameState<'w, 's> {
     area_tracker: ResMut<'w, DandelionAreaTracker>,
 }
 
-/// Handle clicks on dandelions
+/// Handle clicks and touches on dandelions
 fn handle_dandelion_clicks(
     game_state: DandelionGameState,
     dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
     mouse_input: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
 ) {
-    if !mouse_input.just_pressed(MouseButton::Left) {
+    // Check for mouse click
+    let mouse_clicked = mouse_input.just_pressed(MouseButton::Left);
+
+    // Check for touch input (any finger touching)
+    let touch_started = touches.any_just_pressed();
+
+    if !mouse_clicked && !touch_started {
         return;
     }
 
-    let world_pos = match get_world_click_position(&windows, &camera_query) {
+    // Get position from mouse or touch
+    let world_pos = if mouse_clicked {
+        get_world_click_position(&windows, &camera_query)
+    } else if touch_started {
+        get_world_touch_position(&windows, &camera_query, &touches)
+    } else {
+        None
+    };
+
+    let world_pos = match world_pos {
         Some(pos) => pos,
         None => return,
     };
 
-    info!("Click at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
+    debug!("Click/touch at world position: ({:.1}, {:.1})", world_pos.x, world_pos.y);
 
     process_dandelion_hit(game_state, dandelion_query, world_pos);
 }
@@ -321,6 +337,18 @@ fn get_world_click_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
     let (camera, camera_transform) = camera_query.single().ok()?;
     let cursor_pos = window.cursor_position()?;
     camera.viewport_to_world_2d(camera_transform, cursor_pos).ok()
+}
+
+/// Convert touch position to world coordinates
+fn get_world_touch_position(windows: &Query<&Window>, camera_query: &Query<(&Camera, &GlobalTransform)>, touches: &Touches) -> Option<Vec2> {
+    let _window = windows.single().ok()?;
+    let (camera, camera_transform) = camera_query.single().ok()?;
+
+    // Get the first touch that just started
+    let touch = touches.iter_just_pressed().next()?;
+    let touch_pos = touch.position();
+
+    camera.viewport_to_world_2d(camera_transform, touch_pos).ok()
 }
 
 /// Check if click hit a dandelion and process the hit
@@ -356,7 +384,7 @@ fn destroy_dandelion(mut game_state: DandelionGameState, entity: Entity, dandeli
     game_state.game_data.add_dandelion_kill();
     game_state.game_data.dandelion_count = game_state.game_data.dandelion_count.saturating_sub(1);
 
-    info!(
+    debug!(
         "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
         position.x, position.y, game_state.game_data.score, game_state.game_data.combo, spawn_count
     );
@@ -368,7 +396,7 @@ fn debug_dandelion_count(dandelions: Query<&Dandelion>, time: Res<Time>) {
     if (time.elapsed_secs() as u32) % 2 == 0 && time.delta_secs() < 0.1 {
         let count = dandelions.iter().count();
         if count > 0 {
-            info!("Current dandelion count: {}", count);
+            debug!("Current dandelion count: {}", count);
         }
     }
 }
@@ -383,7 +411,7 @@ fn cleanup_enemies(mut commands: Commands, enemy_entities: Query<Entity, With<En
         commands.entity(entity).despawn();
     }
 
-    info!("Enemies cleaned up");
+    debug!("Enemies cleaned up");
 }
 
 /// Spawn seed orbs that will create new dandelions after a delay
@@ -410,7 +438,7 @@ fn spawn_seed_orbs(commands: &mut Commands, asset_server: &Res<AssetServer>, ori
             },
             EnemyEntity,
         ));
-        info!(
+        debug!(
             "Spawned seed orb at ({:.1}, {:.1}) targeting ({:.1}, {:.1})",
             origin.x, origin.y, target_x, target_y
         );
@@ -438,7 +466,7 @@ fn update_seed_orbs(
 
         // Reduce verbose logging
         if orb.spawn_timer.just_finished() {
-            info!(
+            debug!(
                 "Seed orb moving: ({:.1}, {:.1}) -> ({:.1}, {:.1})",
                 current_pos.x, current_pos.y, new_pos.x, new_pos.y
             );
@@ -462,7 +490,7 @@ fn update_seed_orbs(
             commands.entity(entity).despawn();
             game_data.dandelion_count += 1;
             area_tracker.total_area += size.visual_area();
-            info!("Seed orb spawned new dandelion at ({:.1}, {:.1})", orb.target_position.x, orb.target_position.y);
+            debug!("Seed orb spawned new dandelion at ({:.1}, {:.1})", orb.target_position.x, orb.target_position.y);
         }
     }
 }
@@ -512,12 +540,12 @@ fn check_dandelion_merging(
                     entities_to_remove.insert(entity1);
                     entities_to_remove.insert(entity2);
 
-                    info!(
+                    debug!(
                         "Merging two {:?} dandelions at ({:.1}, {:.1}) and ({:.1}, {:.1}) into {:?} at ({:.1}, {:.1})",
                         dandelion1.size, pos1.x, pos1.y, pos2.x, pos2.y, new_size, merge_pos.x, merge_pos.y
                     );
                 } else {
-                    info!("Two {:?} dandelions are close but cannot merge further (already at max size)", dandelion1.size);
+                    debug!("Two {:?} dandelions are close but cannot merge further (already at max size)", dandelion1.size);
                 }
             }
         }
@@ -707,7 +735,7 @@ fn check_moving_dandelion_collisions(
                     }
 
                     upgrades_this_frame += 1;
-                    info!("Moving huge dandelion upgraded a {:?} to {:?}", old_size, new_size);
+                    debug!("Moving huge dandelion upgraded a {:?} to {:?}", old_size, new_size);
                 }
             }
         }
@@ -740,7 +768,7 @@ fn spawn_variety_dandelions(
     // Check if we should enable variety spawning
     if !variety_timer.enabled && game_data.score >= variety_timer.difficulty_threshold {
         variety_timer.enabled = true;
-        info!("Variety spawning enabled at score {}", game_data.score);
+        debug!("Variety spawning enabled at score {}", game_data.score);
     }
 
     if !variety_timer.enabled {
@@ -796,7 +824,7 @@ fn spawn_variety_dandelions(
                 area_tracker.total_area += size.visual_area();
             }
 
-            info!("Spawned variety pack of dandelions (difficulty mode)");
+            debug!("Spawned variety pack of dandelions (difficulty mode)");
         }
     }
 }

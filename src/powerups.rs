@@ -238,9 +238,8 @@ fn spawn_powerups(
         if let Ok(window) = windows.single() {
             let position = calculate_random_spawn_position(window);
             let powerup_type = PowerupType::random();
-
             spawn_powerup_with_effect(&mut commands, &asset_server, position, powerup_type);
-            info!("Spawned {:?} powerup at ({:.1}, {:.1})", powerup_type, position.x, position.y);
+            debug!("Spawned {:?} powerup at ({:.1}, {:.1})", powerup_type, position.x, position.y);
         }
     }
 }
@@ -289,20 +288,36 @@ fn spawn_powerup_with_effect(commands: &mut Commands, asset_server: &AssetServer
     ));
 }
 
-/// Handle clicks on powerups to trigger them immediately
+/// Handle clicks and touches on powerups to trigger them immediately
 fn handle_powerup_clicks(
     mut commands: Commands,
     mouse_input: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
     powerup_query: Query<(Entity, &Powerup, &Transform)>,
     asset_server: Res<AssetServer>,
 ) {
-    if !mouse_input.just_pressed(MouseButton::Left) {
+    // Check for mouse click
+    let mouse_clicked = mouse_input.just_pressed(MouseButton::Left);
+
+    // Check for touch input (any finger touching)
+    let touch_started = touches.any_just_pressed();
+
+    if !mouse_clicked && !touch_started {
         return;
     }
 
-    let world_pos = match get_world_click_position(&windows, &camera_query) {
+    // Get position from mouse or touch
+    let world_pos = if mouse_clicked {
+        get_world_click_position(&windows, &camera_query)
+    } else if touch_started {
+        get_world_touch_position(&windows, &camera_query, &touches)
+    } else {
+        None
+    };
+
+    let world_pos = match world_pos {
         Some(pos) => pos,
         None => return,
     };
@@ -313,7 +328,7 @@ fn handle_powerup_clicks(
         if distance <= POWERUP_CLICK_RADIUS {
             use_powerup(powerup.powerup_type, powerup_pos, &mut commands, &asset_server);
             commands.entity(entity).despawn();
-            info!("Triggered {:?} powerup at ({:.1}, {:.1})", powerup.powerup_type, powerup_pos.x, powerup_pos.y);
+            debug!("Triggered {:?} powerup at ({:.1}, {:.1})", powerup.powerup_type, powerup_pos.x, powerup_pos.y);
             break;
         }
     }
@@ -327,16 +342,28 @@ fn get_world_click_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
     camera.viewport_to_world_2d(camera_transform, cursor_pos).ok()
 }
 
+/// Convert touch position to world coordinates
+fn get_world_touch_position(windows: &Query<&Window>, camera_query: &Query<(&Camera, &GlobalTransform)>, touches: &Touches) -> Option<Vec2> {
+    let _window = windows.single().ok()?;
+    let (camera, camera_transform) = camera_query.single().ok()?;
+
+    // Get the first touch that just started
+    let touch = touches.iter_just_pressed().next()?;
+    let touch_pos = touch.position();
+
+    camera.viewport_to_world_2d(camera_transform, touch_pos).ok()
+}
+
 /// Execute powerup effect at the specified location
 fn use_powerup(powerup_type: PowerupType, position: Vec2, commands: &mut Commands, asset_server: &AssetServer) {
     match powerup_type {
         PowerupType::Bunny => {
             spawn_rabbits(commands, asset_server, position);
-            info!("Bunny powerup activated at ({:.1}, {:.1})", position.x, position.y);
+            debug!("Bunny powerup activated at ({:.1}, {:.1})", position.x, position.y);
         }
         PowerupType::Flamethrower => {
             spawn_fire_ignition(commands, asset_server, position);
-            info!("Flamethrower powerup activated at ({:.1}, {:.1})", position.x, position.y);
+            debug!("Flamethrower powerup activated at ({:.1}, {:.1})", position.x, position.y);
         }
     }
 }
@@ -380,17 +407,17 @@ fn handle_debug_keys(
 
     if keyboard_input.just_pressed(KeyCode::KeyF) {
         use_powerup(PowerupType::Flamethrower, spawn_position, &mut commands, &asset_server);
-        info!("Debug: Spawned fire at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+        debug!("Debug: Spawned fire at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 
     if keyboard_input.just_pressed(KeyCode::KeyB) {
         use_powerup(PowerupType::Bunny, spawn_position, &mut commands, &asset_server);
-        info!("Debug: Spawned bunny at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+        debug!("Debug: Spawned bunny at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 
     if keyboard_input.just_pressed(KeyCode::KeyD) {
         crate::enemies::spawn_dandelion_ring(&mut commands, &asset_server, spawn_position);
-        info!("Debug: Spawned dandelion ring at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+        debug!("Debug: Spawned dandelion ring at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 }
 
@@ -526,14 +553,14 @@ fn handle_rabbit_eating_dandelion(
 
     let size_name = get_dandelion_size_name(target_dandelion.size);
 
-    info!("Rabbit ate a {} dandelion! Total eaten: {}", size_name, rabbit.dandelions_eaten);
+    debug!("Rabbit ate a {} dandelion! Total eaten: {}", size_name, rabbit.dandelions_eaten);
 
     // Rabbit reproduction after eating 2 dandelions
     if rabbit.dandelions_eaten >= 2 {
         spawn_rabbits(commands, asset_server, rabbit_pos);
         rabbit_targeting.clear_rabbit_targets(rabbit_entity);
         commands.entity(rabbit_entity).despawn();
-        info!("Rabbit spawned new rabbits after eating 2 dandelions!");
+        debug!("Rabbit spawned new rabbits after eating 2 dandelions!");
     }
 }
 
@@ -715,7 +742,7 @@ fn cleanup_expired_entities(
         if rabbit.lifetime.just_finished() {
             rabbit_targeting.clear_rabbit_targets(entity);
             commands.entity(entity).despawn();
-            info!("Rabbit expired after 3 seconds");
+            debug!("Rabbit expired after 3 seconds");
         }
     }
 
@@ -736,5 +763,5 @@ fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With
         commands.entity(entity).despawn();
     }
 
-    info!("Powerups cleaned up");
+    debug!("Powerups cleaned up");
 }

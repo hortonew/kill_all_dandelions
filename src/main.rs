@@ -35,6 +35,10 @@ fn main() -> AppExit {
                 ..default()
             }),
             ..default()
+        }).set(bevy::log::LogPlugin {
+            level: bevy::log::Level::INFO,
+            filter: "wgpu=warn,naga=warn".to_string(),
+            ..default()
         }))
         .init_state::<GameState>()
         .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin))
