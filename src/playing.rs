@@ -104,7 +104,7 @@ fn setup_game_camera(mut commands: Commands) {
 }
 
 /// Setup the game UI layout
-fn setup_game_ui(mut commands: Commands) {
+fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Game UI container with flex layout
     commands
         .spawn((
@@ -214,11 +214,28 @@ fn setup_game_ui(mut commands: Commands) {
                     BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("ESC: Return to Menu  •  Click dandelions to kill them!"),
-                        TextFont { font_size: 16.0, ..default() },
-                        TextColor(Color::srgb(0.8, 0.8, 0.8)),
-                    ));
+                    parent
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(10.0),
+                            ..default()
+                        },))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                ImageNode::new(asset_server.load("dandelion_tiny.png")),
+                                Node {
+                                    width: Val::Px(16.0),
+                                    height: Val::Px(16.0),
+                                    ..default()
+                                },
+                            ));
+                            parent.spawn((
+                                Text::new("ESC: Return to Menu  |  Click dandelions to kill them!"),
+                                TextFont { font_size: 16.0, ..default() },
+                                TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                            ));
+                        });
                 });
 
             // Powerup cursor (initially hidden)

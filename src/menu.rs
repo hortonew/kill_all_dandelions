@@ -23,7 +23,7 @@ fn setup_menu_camera(mut commands: Commands) {
 }
 
 /// Setup the main menu UI
-fn setup_menu_ui(mut commands: Commands) {
+fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Main menu container
     commands
         .spawn((
@@ -39,16 +39,30 @@ fn setup_menu_ui(mut commands: Commands) {
             MenuEntity,
         ))
         .with_children(|parent| {
-            // Title
-            parent.spawn((
-                Text::new("🌼 Kill All Dandelions"),
-                TextFont { font_size: 48.0, ..default() },
-                TextColor(Color::srgb(0.9, 0.9, 0.9)),
-                Node {
+            // Title with icon
+            parent
+                .spawn((Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
                     margin: UiRect::all(Val::Px(20.0)),
+                    column_gap: Val::Px(15.0),
                     ..default()
-                },
-            ));
+                },))
+                .with_children(|parent| {
+                    parent.spawn((
+                        ImageNode::new(asset_server.load("dandelion_tiny.png")),
+                        Node {
+                            width: Val::Px(48.0),
+                            height: Val::Px(48.0),
+                            ..default()
+                        },
+                    ));
+                    parent.spawn((
+                        Text::new("Kill All Dandelions"),
+                        TextFont { font_size: 48.0, ..default() },
+                        TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                    ));
+                });
 
             // Subtitle
             parent.spawn((
