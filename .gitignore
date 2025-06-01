@@ -5,6 +5,7 @@
 .vscode
 .github/instructions/
 .bacon-locations
+.DS_Store
 
 # temporary ignores
 ARCHITECTURE.md

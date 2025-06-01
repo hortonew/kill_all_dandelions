@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::GameState;
-use crate::pause_menu::PauseState;
+use crate::pause_menu::{PauseMenuState, PauseState};
 
 // Constants for UI and gameplay
 const TOP_UI_HEIGHT: f32 = 12.0; // Viewport height percentage
@@ -24,7 +24,10 @@ impl Plugin for PlayingPlugin {
                     .run_if(in_state(PauseState::Playing))
                     .run_if(in_state(GameState::Playing)),
             )
-            .add_systems(OnExit(GameState::Playing), cleanup_game);
+            .add_systems(OnEnter(GameState::Playing), play_level1_music)
+            .add_systems(OnExit(GameState::Playing), cleanup_game)
+            .add_systems(OnEnter(PauseState::Paused), toggle_level1_music)
+            .add_systems(OnExit(PauseState::Paused), toggle_level1_music);
     }
 }
 
@@ -239,12 +242,21 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 /// Handle input during gameplay
-fn handle_game_input(keyboard_input: Res<ButtonInput<KeyCode>>, pause_state: Res<State<PauseState>>, mut next_pause_state: ResMut<NextState<PauseState>>) {
+fn handle_game_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    pause_state: Res<State<PauseState>>,
+    mut next_pause_state: ResMut<NextState<PauseState>>,
+    mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
+) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         match pause_state.get() {
-            PauseState::Playing => next_pause_state.set(PauseState::Paused),
-            PauseState::Paused => next_pause_state.set(PauseState::Playing),
-            PauseState::PowerupHelp => next_pause_state.set(PauseState::Paused),
+            PauseState::Playing => {
+                next_pause_state.set(PauseState::Paused);
+                next_pause_menu_state.set(PauseMenuState::PauseMenu);
+            }
+            PauseState::Paused => {
+                next_pause_state.set(PauseState::Playing);
+            }
         }
     }
 }
@@ -338,7 +350,12 @@ fn update_combo_timer(mut game_data: ResMut<GameData>, time: Res<Time>) {
 }
 
 /// Cleanup game entities when exiting playing state
-fn cleanup_game(mut commands: Commands, game_entities: Query<Entity, With<GameEntity>>, mut next_pause_state: ResMut<NextState<PauseState>>) {
+fn cleanup_game(
+    mut commands: Commands,
+    game_entities: Query<Entity, With<GameEntity>>,
+    mut next_pause_state: ResMut<NextState<PauseState>>,
+    music: Query<Entity, With<Level1Music>>,
+) {
     // Reset pause state
     next_pause_state.set(PauseState::Playing);
 
@@ -352,5 +369,30 @@ fn cleanup_game(mut commands: Commands, game_entities: Query<Entity, With<GameEn
         }
     }
 
+    for entity in &music {
+        commands.entity(entity).despawn();
+    }
+
     info!("Game ended, returning to menu");
+}
+
+#[derive(Component)]
+struct Level1Music;
+
+fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands) {
+    let music: Handle<AudioSource> = asset_server.load("audio/level1.wav");
+    commands.spawn((
+        AudioPlayer(music),
+        PlaybackSettings {
+            mode: bevy::audio::PlaybackMode::Loop,
+            ..default()
+        },
+        Level1Music,
+    ));
+}
+
+fn toggle_level1_music(query: Query<&AudioSink, With<Level1Music>>) {
+    if let Ok(sink) = query.single() {
+        sink.toggle_playback();
+    }
 }

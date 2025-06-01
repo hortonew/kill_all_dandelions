@@ -8,15 +8,18 @@ pub struct PauseMenuPlugin;
 impl Plugin for PauseMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<PauseState>()
-            .add_systems(OnEnter(PauseState::Paused), setup_pause_menu)
+            .init_state::<PauseMenuState>()
+            .add_systems(OnEnter(PauseState::Paused), setup_pause_menu_on_pause)
             .add_systems(OnExit(PauseState::Paused), cleanup_pause_menu)
-            .add_systems(OnEnter(PauseState::PowerupHelp), setup_powerup_help_menu)
-            .add_systems(OnExit(PauseState::PowerupHelp), cleanup_pause_menu)
-            .add_systems(Update, (handle_pause_input, pause_menu_interactions).run_if(in_state(PauseState::Paused)))
             .add_systems(
                 Update,
-                (handle_powerup_help_input, powerup_help_interactions).run_if(in_state(PauseState::PowerupHelp)),
-            );
+                (handle_pause_input, pause_menu_interactions).run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::PauseMenu))),
+            )
+            .add_systems(
+                Update,
+                (handle_powerup_help_input, powerup_help_interactions).run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::PowerupHelp))),
+            )
+            .add_systems(Update, switch_pause_menu_content.run_if(in_state(PauseState::Paused)));
     }
 }
 
@@ -25,12 +28,24 @@ impl Plugin for PauseMenuPlugin {
 pub enum PauseState {
     Playing,
     Paused,
+}
+
+/// Sub-state for different pause menu screens
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PauseMenuState {
+    PauseMenu,
     PowerupHelp,
 }
 
 impl Default for PauseState {
     fn default() -> Self {
         Self::Playing
+    }
+}
+
+impl Default for PauseMenuState {
+    fn default() -> Self {
+        Self::PauseMenu
     }
 }
 
@@ -157,6 +172,7 @@ fn setup_pause_menu(mut commands: Commands) {
 fn pause_menu_interactions(
     mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &PauseMenuButton), (Changed<Interaction>, With<Button>)>,
     mut next_pause_state: ResMut<NextState<PauseState>>,
+    mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
     mut next_game_state: ResMut<NextState<GameState>>,
 ) {
     for (interaction, mut color, button_type) in &mut interaction_query {
@@ -170,7 +186,7 @@ fn pause_menu_interactions(
                     next_game_state.set(GameState::Menu);
                 }
                 PauseMenuButton::PowerupHelp => {
-                    next_pause_state.set(PauseState::PowerupHelp);
+                    next_pause_menu_state.set(PauseMenuState::PowerupHelp);
                 }
             },
             Interaction::Hovered => match button_type {
@@ -195,9 +211,9 @@ fn cleanup_pause_menu(mut commands: Commands, pause_entities: Query<Entity, With
 }
 
 /// Handle input while in powerup help screen
-fn handle_powerup_help_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut next_pause_state: ResMut<NextState<PauseState>>) {
+fn handle_powerup_help_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
-        next_pause_state.set(PauseState::Paused);
+        next_pause_menu_state.set(PauseMenuState::PauseMenu);
     }
 }
 
@@ -381,16 +397,52 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
         });
 }
 
+/// Setup pause menu when entering paused state
+fn setup_pause_menu_on_pause(pause_menu_state: Res<State<PauseMenuState>>, commands: Commands, asset_server: Res<AssetServer>) {
+    match pause_menu_state.get() {
+        PauseMenuState::PauseMenu => setup_pause_menu(commands),
+        PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
+    }
+}
+
+/// Switch pause menu content based on pause menu state changes
+fn switch_pause_menu_content(
+    pause_menu_state: Res<State<PauseMenuState>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    pause_entities: Query<Entity, With<PauseMenuEntity>>,
+    mut local_previous_state: Local<Option<PauseMenuState>>,
+) {
+    let current_state = *pause_menu_state.get();
+
+    if let Some(previous_state) = *local_previous_state {
+        if previous_state != current_state {
+            // Clean up previous menu
+            for entity in &pause_entities {
+                commands.entity(entity).despawn();
+            }
+
+            // Setup new menu
+            match current_state {
+                PauseMenuState::PauseMenu => setup_pause_menu(commands),
+                PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
+            }
+        }
+    }
+
+    *local_previous_state = Some(current_state);
+}
+
 /// Handle powerup help menu button interactions
 fn powerup_help_interactions(
     mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &PowerupHelpButton), (Changed<Interaction>, With<Button>)>,
-    mut next_pause_state: ResMut<NextState<PauseState>>,
+    mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
 ) {
     for (interaction, mut color, button_type) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => match button_type {
                 PowerupHelpButton::Back => {
-                    next_pause_state.set(PauseState::Paused);
+                    next_pause_menu_state.set(PauseMenuState::PauseMenu);
                 }
             },
             Interaction::Hovered => match button_type {
