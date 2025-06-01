@@ -290,7 +290,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                             ));
 
                                             parent.spawn((
-                                                Text::new("Spawns 3 rabbits that automatically seek and eat dandelions. Each rabbit can eat multiple dandelions before disappearing after 3 seconds."),
+                                                Text::new("Spawns 3 rabbits that seek and destroy dandelions. Each rabbit has 3 seconds to eat a dandelion, and eating a least 2 spawns a new rabbit."),
                                                 TextFont {
                                                     font_size: 14.0,
                                                     ..default()

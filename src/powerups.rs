@@ -14,15 +14,16 @@ pub struct PowerupsPlugin;
 impl Plugin for PowerupsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Playing), setup_powerup_timer)
+            .insert_resource(FireManager::new())
             .add_systems(
                 Update,
                 (
                     spawn_powerups,
                     handle_powerup_clicks,
                     update_powerup_effects,
-                    handle_powerup_usage,
+                    handle_debug_keys,
                     update_rabbits,
-                    update_fire_ignition,
+                    update_fire_system, // New batched fire system
                     cleanup_expired_rabbits,
                     cleanup_expired_fire,
                 )
@@ -45,12 +46,6 @@ impl Default for PowerupSpawnTimer {
             timer: Timer::from_seconds(15.0, TimerMode::Repeating),
         }
     }
-}
-
-/// Resource to track the currently selected powerup
-#[derive(Resource, Default)]
-pub struct SelectedPowerup {
-    pub powerup_type: Option<PowerupType>,
 }
 
 /// Types of powerups available
@@ -116,7 +111,6 @@ struct ClickHandler<'w, 's> {
     mouse_input: Res<'w, ButtonInput<MouseButton>>,
     windows: Query<'w, 's, &'static Window>,
     camera_query: Query<'w, 's, (&'static Camera, &'static GlobalTransform)>,
-    selected_powerup: ResMut<'w, SelectedPowerup>,
 }
 
 /// System parameter for rabbit behavior operations
@@ -130,18 +124,6 @@ struct RabbitBehavior<'w, 's> {
     game_data: ResMut<'w, GameData>,
     area_tracker: ResMut<'w, DandelionAreaTracker>,
     rabbit_targeting: ResMut<'w, RabbitTargeting>,
-}
-
-/// System parameter for fire ignition operations
-#[derive(SystemParam)]
-struct FireBehavior<'w, 's> {
-    commands: Commands<'w, 's>,
-    fire_query: Query<'w, 's, (Entity, &'static mut Transform, &'static mut FireIgnition, &'static mut Sprite), With<FireIgnition>>,
-    dandelion_query: Query<'w, 's, (Entity, &'static Transform, &'static Dandelion), (With<Dandelion>, Without<FireIgnition>)>,
-    time: Res<'w, Time>,
-    asset_server: Res<'w, AssetServer>,
-    game_data: ResMut<'w, GameData>,
-    area_tracker: ResMut<'w, DandelionAreaTracker>,
 }
 
 /// Resource to track dandelion targeting to prevent rabbits from swarming the same target
@@ -204,22 +186,63 @@ struct FireIgnition {
     radius: f32,
     damage_timer: Timer,
     lifetime: Timer,
+    generation: u32, // Track fire generation to limit chain reactions
 }
 
 impl Default for FireIgnition {
     fn default() -> Self {
         Self {
             radius: 100.0,
-            damage_timer: Timer::from_seconds(0.1, TimerMode::Repeating),
-            lifetime: Timer::from_seconds(2.0, TimerMode::Once),
+            damage_timer: Timer::from_seconds(0.2, TimerMode::Repeating), // Slower but batched
+            lifetime: Timer::from_seconds(3.0, TimerMode::Once),
+            generation: 0,
         }
     }
 }
 
+/// Resource to efficiently track active fires and batch damage calculations
+#[derive(Resource, Default)]
+struct FireManager {
+    /// Spatial grid for efficient collision detection
+    active_fires: Vec<FireData>,
+    /// Queue of pending fire spawns to batch process
+    pending_fires: Vec<PendingFire>,
+    /// Timer for batched processing
+    batch_timer: Timer,
+}
+
+#[derive(Clone)]
+struct FireData {
+    position: Vec2,
+    radius: f32,
+    generation: u32,
+}
+
+struct PendingFire {
+    position: Vec2,
+    generation: u32,
+}
+
+impl FireManager {
+    const MAX_GENERATION: u32 = 5; // Limit chain reaction depth
+    const BATCH_INTERVAL: f32 = 0.1; // Process fires every 100ms
+
+    fn new() -> Self {
+        Self {
+            active_fires: Vec::new(),
+            pending_fires: Vec::new(),
+            batch_timer: Timer::from_seconds(Self::BATCH_INTERVAL, TimerMode::Repeating),
+        }
+    }
+}
+
+/// Component for fire preview radius indicator
+#[derive(Component)]
+struct FirePreview;
+
 /// Setup the powerup spawn timer
 fn setup_powerup_timer(mut commands: Commands) {
     commands.insert_resource(PowerupSpawnTimer::default());
-    commands.insert_resource(SelectedPowerup::default());
     commands.insert_resource(RabbitTargeting::default());
 }
 
@@ -277,8 +300,8 @@ fn spawn_powerups(mut spawner: PowerupSpawner) {
     }
 }
 
-/// Handle clicks on powerups to select them
-fn handle_powerup_clicks(mut click_handler: ClickHandler, powerup_query: Query<(Entity, &Powerup, &Transform)>) {
+/// Handle clicks on powerups to trigger them immediately
+fn handle_powerup_clicks(mut click_handler: ClickHandler, powerup_query: Query<(Entity, &Powerup, &Transform)>, asset_server: Res<AssetServer>) {
     if !click_handler.mouse_input.just_pressed(MouseButton::Left) {
         return;
     }
@@ -294,13 +317,13 @@ fn handle_powerup_clicks(mut click_handler: ClickHandler, powerup_query: Query<(
         let click_radius = 30.0; // Reasonable click area
 
         if distance <= click_radius {
-            // Select the powerup
-            click_handler.selected_powerup.powerup_type = Some(powerup.powerup_type);
+            // Trigger powerup immediately at its position
+            use_powerup(powerup.powerup_type, powerup_pos, &mut click_handler.commands, &asset_server);
 
             // Remove the powerup from the world
             click_handler.commands.entity(entity).despawn();
 
-            info!("Selected {:?} powerup", powerup.powerup_type);
+            info!("Triggered {:?} powerup at ({:.1}, {:.1})", powerup.powerup_type, powerup_pos.x, powerup_pos.y);
             break;
         }
     }
@@ -312,28 +335,6 @@ fn get_world_click_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
     let (camera, camera_transform) = camera_query.single().ok()?;
     let cursor_pos = window.cursor_position()?;
     camera.viewport_to_world_2d(camera_transform, cursor_pos).ok()
-}
-
-/// Handle using selected powerups
-fn handle_powerup_usage(mut click_handler: ClickHandler, asset_server: Res<AssetServer>) {
-    if !click_handler.mouse_input.just_pressed(MouseButton::Left) {
-        return;
-    }
-
-    if let Some(powerup_type) = click_handler.selected_powerup.powerup_type {
-        let world_pos = match get_world_click_position(&click_handler.windows, &click_handler.camera_query) {
-            Some(pos) => pos,
-            None => return,
-        };
-
-        // Use the powerup at the clicked location
-        use_powerup(powerup_type, world_pos, &mut click_handler.commands, &asset_server);
-
-        // Clear the selected powerup
-        click_handler.selected_powerup.powerup_type = None;
-
-        info!("Used {:?} powerup at ({:.1}, {:.1})", powerup_type, world_pos.x, world_pos.y);
-    }
 }
 
 /// Execute powerup effect at the specified location
@@ -371,6 +372,38 @@ fn update_powerup_effects(mut commands: Commands, mut effect_query: Query<(Entit
     }
 }
 
+/// Handle debug keys for testing - F for fire, B for bunny
+fn handle_debug_keys(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+) {
+    let spawn_position = if let Some(world_pos) = get_world_click_position(&windows, &camera_query) {
+        // Use cursor position if available
+        world_pos
+    } else {
+        // Default to center of screen
+        Vec2::ZERO
+    };
+
+    if keyboard_input.just_pressed(KeyCode::KeyF) {
+        use_powerup(PowerupType::Flamethrower, spawn_position, &mut commands, &asset_server);
+        info!("Debug: Spawned fire at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+    }
+
+    if keyboard_input.just_pressed(KeyCode::KeyB) {
+        use_powerup(PowerupType::Bunny, spawn_position, &mut commands, &asset_server);
+        info!("Debug: Spawned bunny at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+    }
+
+    if keyboard_input.just_pressed(KeyCode::KeyD) {
+        crate::enemies::spawn_dandelion_ring(&mut commands, &asset_server, spawn_position);
+        info!("Debug: Spawned dandelion ring at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
+    }
+}
+
 /// Spawn 3 rabbits at the specified location
 fn spawn_rabbits(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
     for i in 0..3 {
@@ -392,14 +425,23 @@ fn spawn_rabbits(commands: &mut Commands, asset_server: &AssetServer, position: 
 
 /// Spawn fire ignition at the specified location
 fn spawn_fire_ignition(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
+    spawn_fire_ignition_with_generation(commands, asset_server, position, 0);
+}
+
+/// Spawn fire ignition with specific generation for chain reactions
+fn spawn_fire_ignition_with_generation(commands: &mut Commands, asset_server: &AssetServer, position: Vec2, generation: u32) {
+    // Spawn the fire ignition with immediate visual effect
     commands.spawn((
         Sprite {
-            image: asset_server.load("seed.png"), // Using seed as fire effect placeholder
-            color: Color::srgba(1.0, 0.3, 0.0, 0.8),
+            image: asset_server.load("flamethrower.png"), // Use flamethrower asset for fire
+            color: Color::srgba(1.0, 0.4, 0.0, 0.9),      // Immediately visible fire
             ..default()
         },
-        Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(1.0)),
-        FireIgnition::default(),
+        Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(0.8)),
+        FireIgnition {
+            generation,
+            ..Default::default()
+        },
         PowerupEntity,
     ));
 }
@@ -508,6 +550,7 @@ fn find_best_dandelion_target(
     let mut best_target = None;
     let mut best_score = f32::NEG_INFINITY;
 
+    // First pass: try to find untargeted dandelions (preferred)
     for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
         // Skip if already being targeted by another rabbit
         if rabbit_targeting.is_targeted(dandelion_entity) && rabbit_targeting.get_targeting_rabbit(dandelion_entity) != Some(rabbit_entity) {
@@ -536,74 +579,111 @@ fn find_best_dandelion_target(
         }
     }
 
+    // If no untargeted dandelion found, fallback to any close dandelion
+    if best_target.is_none() {
+        let mut close_dandelions = Vec::new();
+
+        for (dandelion_entity, dandelion_transform, _) in dandelion_query.iter() {
+            let dandelion_pos = dandelion_transform.translation.truncate();
+            let distance = rabbit_pos.distance(dandelion_pos);
+
+            // Consider dandelions within reasonable range
+            if distance <= 200.0 {
+                close_dandelions.push(dandelion_entity);
+            }
+        }
+
+        // Pick a random close dandelion if any exist
+        if !close_dandelions.is_empty() {
+            let mut rng = rand::thread_rng();
+            let random_index = rng.gen_range(0..close_dandelions.len());
+            best_target = Some(close_dandelions[random_index]);
+        }
+    }
+
     best_target
 }
 
-/// Update fire ignition effects and damage dandelions
-fn update_fire_ignition(mut fire_behavior: FireBehavior) {
-    for (_fire_entity, mut fire_transform, mut fire, mut sprite) in fire_behavior.fire_query.iter_mut() {
-        fire.damage_timer.tick(fire_behavior.time.delta());
-        fire.lifetime.tick(fire_behavior.time.delta());
+/// New optimized fire system with batched processing
+fn update_fire_system(
+    mut commands: Commands,
+    mut fire_query: Query<(Entity, &mut Transform, &mut FireIgnition, &mut Sprite), With<FireIgnition>>,
+    dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<FireIgnition>)>,
+    mut fire_manager: ResMut<FireManager>,
+    time: Res<Time>,
+    asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+) {
+    // Update fire manager timer
+    fire_manager.batch_timer.tick(time.delta());
 
-        // Expand the fire effect
+    // Update individual fire visuals and lifetimes
+    fire_manager.active_fires.clear();
+    for (fire_entity, mut fire_transform, mut fire, mut sprite) in fire_query.iter_mut() {
+        fire.damage_timer.tick(time.delta());
+        fire.lifetime.tick(time.delta());
+
+        // Store active fire data for batch processing
+        fire_manager.active_fires.push(FireData {
+            position: fire_transform.translation.truncate(),
+            radius: fire.radius,
+            generation: fire.generation,
+        });
+
+        // Fire visual effects
         let lifetime_progress = fire.lifetime.elapsed_secs() / fire.lifetime.duration().as_secs_f32();
-        let scale = 1.0 + lifetime_progress * 2.0;
-        fire_transform.scale = Vec3::splat(scale);
+        let pulse = (time.elapsed_secs() * 12.0).sin() * 0.15 + 1.0;
+        fire_transform.scale = Vec3::splat(0.8 * pulse);
+        let alpha = (1.0 - lifetime_progress) * 0.95;
+        sprite.color = Color::srgba(1.0, 0.4, 0.0, alpha);
 
-        // Update fire radius based on scale
-        fire.radius = 100.0 * scale;
+        // Remove expired fires
+        if fire.lifetime.just_finished() {
+            commands.entity(fire_entity).despawn();
+        }
+    }
 
-        // Fade out over time
-        let alpha = 0.8 * (1.0 - lifetime_progress);
-        sprite.color.set_alpha(alpha);
+    // Batch process fire damage when timer triggers
+    if fire_manager.batch_timer.just_finished() {
+        let mut dandelions_to_destroy = Vec::new();
 
-        // Damage dandelions in radius
-        if fire.damage_timer.just_finished() {
-            let fire_pos = fire_transform.translation.truncate();
-            let mut dandelions_to_ignite = Vec::new();
+        // Single pass through all dandelions, check against all fires
+        for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
+            let dandelion_pos = dandelion_transform.translation.truncate();
 
-            for (dandelion_entity, dandelion_transform, dandelion) in fire_behavior.dandelion_query.iter() {
-                let dandelion_pos = dandelion_transform.translation.truncate();
-                let distance = fire_pos.distance(dandelion_pos);
-
-                if distance <= fire.radius {
-                    dandelions_to_ignite.push((dandelion_entity, dandelion_pos, dandelion.size));
+            // Check if this dandelion is hit by any fire
+            for fire_data in &fire_manager.active_fires {
+                let distance = fire_data.position.distance(dandelion_pos);
+                if distance <= fire_data.radius {
+                    dandelions_to_destroy.push((dandelion_entity, dandelion_pos, dandelion.size, fire_data.generation));
+                    break; // One hit is enough
                 }
             }
+        }
 
-            // Remove ignited dandelions and potentially spawn chain reactions
-            for (dandelion_entity, dandelion_pos, dandelion_size) in dandelions_to_ignite {
-                // Remove the dandelion
-                fire_behavior.commands.entity(dandelion_entity).despawn();
+        // Process destroyed dandelions and queue chain fires
+        for (dandelion_entity, dandelion_pos, dandelion_size, generation) in dandelions_to_destroy {
+            // Remove the dandelion
+            commands.entity(dandelion_entity).despawn();
 
-                // Update tracking
-                fire_behavior.area_tracker.total_area -= dandelion_size.visual_area();
-                fire_behavior.game_data.add_dandelion_kill();
-                fire_behavior.game_data.dandelion_count = fire_behavior.game_data.dandelion_count.saturating_sub(1);
+            // Update tracking
+            area_tracker.total_area -= dandelion_size.visual_area();
+            game_data.add_dandelion_kill();
+            game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
 
-                info!(
-                    "Fire ignited a {:?} dandelion at ({:.1}, {:.1})",
-                    dandelion_size, dandelion_pos.x, dandelion_pos.y
-                );
-
-                // Spawn new fire at dandelion location for chain reaction (smaller)
-                let chain_fire = FireIgnition {
-                    radius: 60.0,                                        // Smaller chain reaction
-                    lifetime: Timer::from_seconds(1.0, TimerMode::Once), // Shorter duration
-                    ..Default::default()
-                };
-
-                fire_behavior.commands.spawn((
-                    Sprite {
-                        image: fire_behavior.asset_server.load("seed.png"),
-                        color: Color::srgba(1.0, 0.5, 0.1, 0.6),
-                        ..default()
-                    },
-                    Transform::from_translation(Vec3::new(dandelion_pos.x, dandelion_pos.y, 12.0)).with_scale(Vec3::splat(0.8)),
-                    chain_fire,
-                    PowerupEntity,
-                ));
+            // Queue chain fire if generation limit not exceeded
+            if generation < FireManager::MAX_GENERATION {
+                fire_manager.pending_fires.push(PendingFire {
+                    position: dandelion_pos,
+                    generation: generation + 1,
+                });
             }
+        }
+
+        // Spawn pending chain fires (batched)
+        for pending_fire in fire_manager.pending_fires.drain(..) {
+            spawn_fire_ignition_with_generation(&mut commands, &asset_server, pending_fire.position, pending_fire.generation);
         }
     }
 }
@@ -632,7 +712,6 @@ fn cleanup_expired_fire(mut commands: Commands, fire_query: Query<(Entity, &Fire
 /// Cleanup powerup entities when exiting playing state
 fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With<PowerupEntity>>) {
     commands.remove_resource::<PowerupSpawnTimer>();
-    commands.remove_resource::<SelectedPowerup>();
     commands.remove_resource::<RabbitTargeting>();
 
     for entity in &powerup_entities {

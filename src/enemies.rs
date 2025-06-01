@@ -683,21 +683,27 @@ fn check_moving_dandelion_collisions(
                     stationary_dandelion.size = new_size;
 
                     // Add upgrade cooldown to prevent immediate re-upgrading
-                    commands.entity(stationary_entity).insert(UpgradeCooldown::default());
+                    if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
+                        entity_commands.try_insert(UpgradeCooldown::default());
+                    }
 
                     // Update the sprite and transform
-                    commands.entity(stationary_entity).insert((
-                        Sprite {
-                            image: asset_server.load(new_size.asset_path()),
-                            color: Color::WHITE,
-                            ..default()
-                        },
-                        Transform::from_translation(Vec3::new(stationary_pos.x, stationary_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
-                    ));
+                    if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
+                        entity_commands.try_insert((
+                            Sprite {
+                                image: asset_server.load(new_size.asset_path()),
+                                color: Color::WHITE,
+                                ..default()
+                            },
+                            Transform::from_translation(Vec3::new(stationary_pos.x, stationary_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
+                        ));
+                    }
 
                     // If it became huge, make it moving too
                     if new_size == DandelionSize::Huge {
-                        commands.entity(stationary_entity).insert(MovingDandelion::default());
+                        if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
+                            entity_commands.try_insert(MovingDandelion::default());
+                        }
                     }
 
                     upgrades_this_frame += 1;
@@ -714,7 +720,9 @@ fn update_upgrade_cooldowns(mut commands: Commands, mut cooldown_query: Query<(E
         cooldown.timer.tick(time.delta());
 
         if cooldown.timer.finished() {
-            commands.entity(entity).remove::<UpgradeCooldown>();
+            if let Ok(mut entity_commands) = commands.get_entity(entity) {
+                entity_commands.remove::<UpgradeCooldown>();
+            }
         }
     }
 }
@@ -790,5 +798,29 @@ fn spawn_variety_dandelions(
 
             info!("Spawned variety pack of dandelions (difficulty mode)");
         }
+    }
+}
+
+/// Spawn a ring of dandelions for testing fire spread
+pub fn spawn_dandelion_ring(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
+    let radius = 100.0;
+    let dandelion_count = 12;
+    let size = DandelionSize::Tiny;
+
+    for i in 0..dandelion_count {
+        let angle = (i as f32) * (std::f32::consts::PI * 2.0 / dandelion_count as f32);
+        let offset = Vec2::new(angle.cos(), angle.sin()) * radius;
+        let spawn_pos = position + offset;
+
+        commands.spawn((
+            Sprite {
+                image: asset_server.load(size.asset_path()),
+                color: Color::WHITE,
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(spawn_pos.x, spawn_pos.y, 10.0)).with_scale(Vec3::splat(size.scale())),
+            Dandelion { health: 1, size },
+            EnemyEntity,
+        ));
     }
 }
