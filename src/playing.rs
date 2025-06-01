@@ -3,6 +3,15 @@ use bevy::prelude::*;
 use crate::GameState;
 use crate::pause_menu::PauseState;
 
+// Constants for UI and gameplay
+const TOP_UI_HEIGHT: f32 = 12.0; // Viewport height percentage
+const BOTTOM_UI_HEIGHT: f32 = 8.0; // Viewport height percentage
+const UI_PADDING: f32 = 2.0; // Viewport width percentage
+const GRASS_BACKGROUND_COLOR: Color = Color::srgb(0.2, 0.6, 0.2);
+const UI_BACKGROUND_COLOR: Color = Color::srgba(0.0, 0.0, 0.0, 0.8);
+const COMBO_TIMER_WIDTH: f32 = 80.0;
+const COMBO_TIMER_HEIGHT: f32 = 6.0;
+
 /// Plugin for handling the main gameplay
 pub struct PlayingPlugin;
 
@@ -84,24 +93,22 @@ fn setup_game_resources(mut commands: Commands) {
     info!("Game started!");
 }
 
-/// Setup the game camera
+/// Setup the game camera and background
 fn setup_game_camera(mut commands: Commands) {
     commands.spawn((Camera2d, GameEntity));
 
-    // Add grass background sprite to cover the play area
     commands.spawn((
         Sprite {
-            color: Color::srgb(0.2, 0.6, 0.2), // Green grass color
+            color: GRASS_BACKGROUND_COLOR,
             ..default()
         },
-        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)).with_scale(Vec3::new(2000.0, 2000.0, 1.0)), // Large background
+        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)).with_scale(Vec3::new(2000.0, 2000.0, 1.0)),
         GameEntity,
     ));
 }
 
 /// Setup the game UI layout
 fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Game UI container with flex layout
     commands
         .spawn((
             Node {
@@ -113,18 +120,18 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             GameEntity,
         ))
         .with_children(|parent| {
-            // Top UI panel
+            // Top UI panel with score, combo, and curb appeal
             parent
                 .spawn((
                     Node {
                         width: Val::Percent(100.0),
-                        height: Val::Vh(12.0),
-                        padding: UiRect::all(Val::Vw(2.0)),
+                        height: Val::Vh(TOP_UI_HEIGHT),
+                        padding: UiRect::all(Val::Vw(UI_PADDING)),
                         justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+                    BackgroundColor(UI_BACKGROUND_COLOR),
                 ))
                 .with_children(|parent| {
                     // Score display
@@ -135,7 +142,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         ScoreText,
                     ));
 
-                    // Combo display with timer
+                    // Combo display with timer bar
                     parent
                         .spawn((Node {
                             flex_direction: FlexDirection::Column,
@@ -143,7 +150,6 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ..default()
                         },))
                         .with_children(|parent| {
-                            // Combo multiplier
                             parent.spawn((
                                 Text::new("Combo: 0x"),
                                 TextFont { font_size: 20.0, ..default() },
@@ -151,12 +157,12 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ComboText,
                             ));
 
-                            // Combo timer bar container
+                            // Combo timer bar
                             parent
                                 .spawn((
                                     Node {
-                                        width: Val::Px(80.0),
-                                        height: Val::Px(6.0),
+                                        width: Val::Px(COMBO_TIMER_WIDTH),
+                                        height: Val::Px(COMBO_TIMER_HEIGHT),
                                         border: UiRect::all(Val::Px(1.0)),
                                         ..default()
                                     },
@@ -164,7 +170,6 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
                                 ))
                                 .with_children(|parent| {
-                                    // Timer bar fill
                                     parent.spawn((
                                         Node {
                                             width: Val::Percent(0.0),
@@ -186,28 +191,25 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ));
                 });
 
-            // Middle game area (lawn) - takes remaining space, no background color
-            parent.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_grow: 1.0,
-                    ..default()
-                },
-                // Removed BackgroundColor to let world sprites show through
-            ));
+            // Middle game area where gameplay happens
+            parent.spawn((Node {
+                width: Val::Percent(100.0),
+                flex_grow: 1.0,
+                ..default()
+            },));
 
-            // Bottom UI panel
+            // Bottom UI panel with instructions
             parent
                 .spawn((
                     Node {
                         width: Val::Percent(100.0),
-                        height: Val::Vh(8.0),
-                        padding: UiRect::all(Val::Vw(2.0)),
+                        height: Val::Vh(BOTTOM_UI_HEIGHT),
+                        padding: UiRect::all(Val::Vw(UI_PADDING)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+                    BackgroundColor(UI_BACKGROUND_COLOR),
                 ))
                 .with_children(|parent| {
                     parent
@@ -247,24 +249,46 @@ fn handle_game_input(keyboard_input: Res<ButtonInput<KeyCode>>, pause_state: Res
     }
 }
 
-/// Update game UI elements
-fn update_ui(
-    game_data: Res<GameData>,
-    mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
-    mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>,
-    mut combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
-    mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
-    windows: Query<&Window>,
-    area_tracker: Res<crate::enemies::DandelionAreaTracker>,
-) {
+/// Calculate curb appeal based on dandelion count and types
+fn calculate_curb_appeal(dandelion_query: &Query<&crate::enemies::Dandelion>) -> i32 {
+    let mut total_impact = 0.0;
+
+    // Count dandelions by size and calculate their curb appeal impact
+    for dandelion in dandelion_query.iter() {
+        let impact = match dandelion.size {
+            crate::enemies::DandelionSize::Tiny => 1.0,
+            crate::enemies::DandelionSize::Small => 1.5,
+            crate::enemies::DandelionSize::Medium => 2.5,
+            crate::enemies::DandelionSize::Large => 4.0,
+            crate::enemies::DandelionSize::Huge => 6.0,
+        };
+        total_impact += impact;
+    }
+
+    // More forgiving formula that keeps appeal higher for longer
+    // Uses square root to slow down the decline, especially at low counts
+    let base_reduction = (total_impact * 2.0f32).sqrt() * 8.0f32;
+    let curb_appeal = 100.0f32 - base_reduction;
+
+    (curb_appeal.round() as i32).clamp(0, 100)
+}
+
+/// Update score display
+fn update_score_display(game_data: &GameData, mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>) {
     if let Ok(mut text) = score_query.single_mut() {
         **text = format!("Score: {}", game_data.score);
     }
+}
 
+/// Update combo display
+fn update_combo_display(game_data: &GameData, mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>) {
     if let Ok(mut text) = combo_query.single_mut() {
         **text = format!("Combo: {}x", game_data.combo);
     }
+}
 
+/// Update combo timer bar
+fn update_combo_timer_display(game_data: &GameData, mut combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>) {
     if let Ok(mut node) = combo_timer_bar_query.single_mut() {
         if game_data.combo > 0 {
             let progress = game_data.combo_timer.remaining_secs() / game_data.combo_timer.duration().as_secs_f32();
@@ -273,30 +297,32 @@ fn update_ui(
             node.width = Val::Percent(0.0);
         }
     }
+}
 
+/// Update curb appeal display
+fn update_curb_appeal_display(
+    dandelion_query: Query<&crate::enemies::Dandelion>,
+    mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
+) {
     if let Ok(mut text) = curb_appeal_query.single_mut() {
-        let curb_appeal = if let Ok(window) = windows.single() {
-            // Calculate playable area (excluding UI panels)
-            let margin = 30.0;
-            let top_ui_height = window.height() * 0.12; // 12vh for top panel
-            let bottom_ui_height = window.height() * 0.08; // 8vh for bottom panel
-
-            let playable_width = window.width() - (margin * 2.0);
-            let playable_height = window.height() - top_ui_height - bottom_ui_height - (margin * 2.0);
-            let total_lawn_area = playable_width * playable_height;
-
-            // Calculate total dandelion coverage area
-            let total_dandelion_area = area_tracker.total_area;
-
-            // Calculate coverage percentage and curb appeal
-            let coverage_percentage = (total_dandelion_area / total_lawn_area) * 100.0;
-            let curb_appeal = (100.0 - coverage_percentage.min(100.0)).max(0.0);
-            curb_appeal as i32
-        } else {
-            100 // Default if no window found
-        };
+        let curb_appeal = calculate_curb_appeal(&dandelion_query);
         **text = format!("Curb Appeal: {}%", curb_appeal);
     }
+}
+
+/// Update game UI elements
+fn update_ui(
+    game_data: Res<GameData>,
+    score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
+    combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>)>,
+    combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
+    curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>)>,
+    dandelion_query: Query<&crate::enemies::Dandelion>,
+) {
+    update_score_display(&game_data, score_query);
+    update_combo_display(&game_data, combo_query);
+    update_combo_timer_display(&game_data, combo_timer_bar_query);
+    update_curb_appeal_display(dandelion_query, curb_appeal_query);
 }
 
 /// Update combo timer and reset combo when it expires
