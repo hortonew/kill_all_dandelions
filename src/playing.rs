@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::GameState;
 use crate::pause_menu::PauseState;
+use crate::powerups::{PowerupType, SelectedPowerup};
 
 /// Plugin for handling the main gameplay
 pub struct PlayingPlugin;
@@ -11,7 +12,7 @@ impl Plugin for PlayingPlugin {
         app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
             .add_systems(
                 Update,
-                (handle_game_input, update_ui, update_combo_timer)
+                (handle_game_input, update_ui, update_combo_timer, update_cursor_feedback, update_powerup_cursor)
                     .run_if(in_state(PauseState::Playing))
                     .run_if(in_state(GameState::Playing)),
             )
@@ -77,6 +78,9 @@ struct ComboTimerBar;
 
 #[derive(Component)]
 struct CurbAppealText;
+
+#[derive(Component)]
+struct PowerupCursor;
 
 /// Initialize game resources
 fn setup_game_resources(mut commands: Commands) {
@@ -216,6 +220,19 @@ fn setup_game_ui(mut commands: Commands) {
                         TextColor(Color::srgb(0.8, 0.8, 0.8)),
                     ));
                 });
+
+            // Powerup cursor (initially hidden)
+            parent.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(32.0),
+                    height: Val::Px(32.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+                PowerupCursor,
+                Visibility::Hidden,
+            ));
         });
 }
 
@@ -289,6 +306,58 @@ fn update_combo_timer(mut game_data: ResMut<GameData>, time: Res<Time>) {
         if game_data.combo_timer.finished() {
             game_data.reset_combo();
             info!("Combo expired! Reset to 0");
+        }
+    }
+}
+
+/// Update cursor feedback based on selected powerup
+fn update_cursor_feedback(selected_powerup: Res<SelectedPowerup>, mut windows: Query<&mut Window>) {
+    if let Ok(mut window) = windows.single_mut() {
+        match selected_powerup.powerup_type {
+            Some(_powerup_type) => {
+                // Hide cursor when powerup is selected
+                window.cursor_options.visible = false;
+            }
+            None => {
+                // Show default cursor
+                window.cursor_options.visible = true;
+            }
+        }
+    }
+}
+
+/// Update powerup cursor position and visibility
+fn update_powerup_cursor(
+    selected_powerup: Res<SelectedPowerup>,
+    windows: Query<&Window>,
+    mut cursor_query: Query<(Entity, &mut Node, &mut Visibility), With<PowerupCursor>>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    if let Ok(window) = windows.single() {
+        if let Ok((entity, mut node, mut visibility)) = cursor_query.single_mut() {
+            match selected_powerup.powerup_type {
+                Some(powerup_type) => {
+                    // Show powerup cursor
+                    *visibility = Visibility::Visible;
+
+                    // Update cursor position to follow mouse
+                    if let Some(cursor_pos) = window.cursor_position() {
+                        node.left = Val::Px(cursor_pos.x - 16.0); // Center the 32px cursor
+                        node.top = Val::Px(cursor_pos.y - 16.0);
+                    }
+
+                    // Update cursor image if changed
+                    // Note: This is a simplified approach - in a real game you'd cache the image
+                    if selected_powerup.is_changed() {
+                        commands.entity(entity).insert(ImageNode::new(asset_server.load(powerup_type.asset_path())));
+                    }
+                }
+                None => {
+                    // Hide powerup cursor
+                    *visibility = Visibility::Hidden;
+                }
+            }
         }
     }
 }

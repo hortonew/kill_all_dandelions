@@ -4,10 +4,12 @@ mod enemies;
 mod menu;
 mod pause_menu;
 mod playing;
+mod powerups;
 use enemies::EnemiesPlugin;
 use menu::MenuPlugin;
 use pause_menu::PauseMenuPlugin;
 use playing::PlayingPlugin;
+use powerups::PowerupsPlugin;
 
 /// Game states for managing different screens
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
@@ -35,6 +37,6 @@ fn main() -> AppExit {
             ..default()
         }))
         .init_state::<GameState>()
-        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin))
+        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin))
         .run()
 }
