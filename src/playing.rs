@@ -346,8 +346,10 @@ fn cleanup_game(mut commands: Commands, game_entities: Query<Entity, With<GameEn
     commands.remove_resource::<GameData>();
 
     // Cleanup all game entities
-    for entity in &game_entities {
-        commands.entity(entity).despawn();
+    for entity in game_entities.iter() {
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.despawn();
+        }
     }
 
     info!("Game ended, returning to menu");

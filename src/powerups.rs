@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashMap;
 
+use crate::GameAssets;
 use crate::GameState;
 use crate::enemies::{Dandelion, DandelionAreaTracker};
 use crate::pause_menu::PauseState;
@@ -66,14 +67,6 @@ pub enum PowerupType {
 }
 
 impl PowerupType {
-    /// Get the asset path for this powerup
-    pub fn asset_path(&self) -> &'static str {
-        match self {
-            PowerupType::Bunny => "bunny.png",
-            PowerupType::Flamethrower => "flamethrower.png",
-        }
-    }
-
     /// Get all available powerup types
     pub fn all() -> Vec<Self> {
         vec![PowerupType::Bunny, PowerupType::Flamethrower]
@@ -225,20 +218,14 @@ fn setup_powerup_resources(mut commands: Commands) {
 }
 
 /// Spawn powerups at random positions
-fn spawn_powerups(
-    mut commands: Commands,
-    mut spawn_timer: ResMut<PowerupSpawnTimer>,
-    time: Res<Time>,
-    windows: Query<&Window>,
-    asset_server: Res<AssetServer>,
-) {
+fn spawn_powerups(mut commands: Commands, mut spawn_timer: ResMut<PowerupSpawnTimer>, time: Res<Time>, windows: Query<&Window>, assets: Res<GameAssets>) {
     spawn_timer.timer.tick(time.delta());
 
     if spawn_timer.timer.just_finished() {
         if let Ok(window) = windows.single() {
             let position = calculate_random_spawn_position(window);
             let powerup_type = PowerupType::random();
-            spawn_powerup_with_effect(&mut commands, &asset_server, position, powerup_type);
+            spawn_powerup_with_effect(&mut commands, &assets, position, powerup_type);
             debug!("Spawned {:?} powerup at ({:.1}, {:.1})", powerup_type, position.x, position.y);
         }
     }
@@ -260,30 +247,19 @@ fn calculate_random_spawn_position(window: &Window) -> Vec2 {
 }
 
 /// Spawn a powerup with its visual effect
-fn spawn_powerup_with_effect(commands: &mut Commands, asset_server: &AssetServer, position: Vec2, powerup_type: PowerupType) {
+fn spawn_powerup_with_effect(commands: &mut Commands, assets: &GameAssets, position: Vec2, powerup_type: PowerupType) {
     // Spawn the powerup
+    let image_handle = match powerup_type {
+        PowerupType::Bunny => assets.bunny.clone(),
+        PowerupType::Flamethrower => assets.flamethrower.clone(),
+    };
     commands.spawn((
         Sprite {
-            image: asset_server.load(powerup_type.asset_path()),
+            image: image_handle,
             ..default()
         },
         Transform::from_translation(Vec3::new(position.x, position.y, 15.0)).with_scale(Vec3::splat(0.8)),
         Powerup { powerup_type },
-        PowerupEntity,
-    ));
-
-    // Spawn blue expanding effect
-    commands.spawn((
-        Sprite {
-            image: asset_server.load("seed.png"),
-            color: Color::srgba(0.0, 0.5, 1.0, 0.8),
-            ..default()
-        },
-        Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(0.1)),
-        PowerupEffect {
-            timer: Timer::from_seconds(1.0, TimerMode::Once),
-            initial_scale: 0.1,
-        },
         PowerupEntity,
     ));
 }
@@ -296,7 +272,7 @@ fn handle_powerup_clicks(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
     powerup_query: Query<(Entity, &Powerup, &Transform)>,
-    asset_server: Res<AssetServer>,
+    assets: Res<GameAssets>,
 ) {
     // Check for mouse click
     let mouse_clicked = mouse_input.just_pressed(MouseButton::Left);
@@ -326,8 +302,10 @@ fn handle_powerup_clicks(
         let powerup_pos = transform.translation.truncate();
         let distance = world_pos.distance(powerup_pos);
         if distance <= POWERUP_CLICK_RADIUS {
-            use_powerup(powerup.powerup_type, powerup_pos, &mut commands, &asset_server);
-            commands.entity(entity).despawn();
+            use_powerup(powerup.powerup_type, powerup_pos, &mut commands, &assets);
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
             debug!("Triggered {:?} powerup at ({:.1}, {:.1})", powerup.powerup_type, powerup_pos.x, powerup_pos.y);
             break;
         }
@@ -355,14 +333,14 @@ fn get_world_touch_position(windows: &Query<&Window>, camera_query: &Query<(&Cam
 }
 
 /// Execute powerup effect at the specified location
-fn use_powerup(powerup_type: PowerupType, position: Vec2, commands: &mut Commands, asset_server: &AssetServer) {
+fn use_powerup(powerup_type: PowerupType, position: Vec2, commands: &mut Commands, assets: &GameAssets) {
     match powerup_type {
         PowerupType::Bunny => {
-            spawn_rabbits(commands, asset_server, position);
+            spawn_rabbits(commands, assets, position);
             debug!("Bunny powerup activated at ({:.1}, {:.1})", position.x, position.y);
         }
         PowerupType::Flamethrower => {
-            spawn_fire_ignition(commands, asset_server, position);
+            spawn_fire_ignition(commands, assets, position);
             debug!("Flamethrower powerup activated at ({:.1}, {:.1})", position.x, position.y);
         }
     }
@@ -393,7 +371,7 @@ fn update_powerup_effects(mut commands: Commands, mut effect_query: Query<(Entit
 fn handle_debug_keys(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    assets: Res<GameAssets>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
 ) {
@@ -406,23 +384,23 @@ fn handle_debug_keys(
     };
 
     if keyboard_input.just_pressed(KeyCode::KeyF) {
-        use_powerup(PowerupType::Flamethrower, spawn_position, &mut commands, &asset_server);
+        use_powerup(PowerupType::Flamethrower, spawn_position, &mut commands, &assets);
         debug!("Debug: Spawned fire at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 
     if keyboard_input.just_pressed(KeyCode::KeyB) {
-        use_powerup(PowerupType::Bunny, spawn_position, &mut commands, &asset_server);
+        use_powerup(PowerupType::Bunny, spawn_position, &mut commands, &assets);
         debug!("Debug: Spawned bunny at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 
     if keyboard_input.just_pressed(KeyCode::KeyD) {
-        crate::enemies::spawn_dandelion_ring(&mut commands, &asset_server, spawn_position);
+        crate::enemies::spawn_dandelion_ring(&mut commands, &assets, spawn_position);
         debug!("Debug: Spawned dandelion ring at ({:.1}, {:.1})", spawn_position.x, spawn_position.y);
     }
 }
 
 /// Spawn 3 rabbits at the specified location
-fn spawn_rabbits(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
+fn spawn_rabbits(commands: &mut Commands, assets: &GameAssets, position: Vec2) {
     for i in 0..3 {
         let angle = (i as f32) * (2.0 * std::f32::consts::PI / 3.0); // 120 degrees apart
         let offset = Vec2::new(angle.cos(), angle.sin()) * 20.0;
@@ -430,7 +408,7 @@ fn spawn_rabbits(commands: &mut Commands, asset_server: &AssetServer, position: 
 
         commands.spawn((
             Sprite {
-                image: asset_server.load("bunny.png"),
+                image: assets.bunny.clone(),
                 ..default()
             },
             Transform::from_translation(Vec3::new(spawn_pos.x, spawn_pos.y, 12.0)).with_scale(Vec3::splat(0.6)),
@@ -441,17 +419,16 @@ fn spawn_rabbits(commands: &mut Commands, asset_server: &AssetServer, position: 
 }
 
 /// Spawn fire ignition at the specified location
-fn spawn_fire_ignition(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
-    spawn_fire_ignition_with_generation(commands, asset_server, position, 0);
+fn spawn_fire_ignition(commands: &mut Commands, assets: &GameAssets, position: Vec2) {
+    spawn_fire_ignition_with_generation(commands, assets, position, 0);
 }
 
 /// Spawn fire ignition with specific generation for chain reactions
-fn spawn_fire_ignition_with_generation(commands: &mut Commands, asset_server: &AssetServer, position: Vec2, generation: u32) {
-    // Spawn the fire ignition with immediate visual effect
+fn spawn_fire_ignition_with_generation(commands: &mut Commands, assets: &GameAssets, position: Vec2, generation: u32) {
     commands.spawn((
         Sprite {
-            image: asset_server.load("flamethrower.png"), // Use flamethrower asset for fire
-            color: Color::srgba(1.0, 0.4, 0.0, 0.9),      // Immediately visible fire
+            image: assets.flamethrower.clone(),
+            color: Color::srgba(1.0, 0.4, 0.0, 0.9),
             ..default()
         },
         Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(0.8)),
@@ -469,7 +446,7 @@ fn update_rabbits(
     mut rabbit_query: Query<(Entity, &mut Transform, &mut Rabbit)>,
     dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<Rabbit>)>,
     time: Res<Time>,
-    asset_server: Res<AssetServer>,
+    assets: Res<GameAssets>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
     mut rabbit_targeting: ResMut<RabbitTargeting>,
@@ -510,7 +487,7 @@ fn update_rabbits(
                 if distance <= RABBIT_EAT_DISTANCE {
                     handle_rabbit_eating_dandelion(
                         &mut commands,
-                        &asset_server,
+                        &assets,
                         rabbit_entity,
                         target_entity,
                         target_dandelion,
@@ -529,7 +506,7 @@ fn update_rabbits(
 /// Handle a rabbit eating a dandelion and potential rabbit reproduction
 fn handle_rabbit_eating_dandelion(
     commands: &mut Commands,
-    asset_server: &AssetServer,
+    assets: &GameAssets,
     rabbit_entity: Entity,
     target_entity: Entity,
     target_dandelion: &Dandelion,
@@ -541,7 +518,9 @@ fn handle_rabbit_eating_dandelion(
 ) {
     // Release the target claim and remove dandelion
     rabbit_targeting.release_target(target_entity);
-    commands.entity(target_entity).despawn();
+    if let Ok(mut ec) = commands.get_entity(target_entity) {
+        ec.despawn();
+    }
 
     // Update game tracking
     area_tracker.total_area -= target_dandelion.size.visual_area();
@@ -557,9 +536,11 @@ fn handle_rabbit_eating_dandelion(
 
     // Rabbit reproduction after eating 2 dandelions
     if rabbit.dandelions_eaten >= 2 {
-        spawn_rabbits(commands, asset_server, rabbit_pos);
+        spawn_rabbits(commands, assets, rabbit_pos);
         rabbit_targeting.clear_rabbit_targets(rabbit_entity);
-        commands.entity(rabbit_entity).despawn();
+        if let Ok(mut ec) = commands.get_entity(rabbit_entity) {
+            ec.despawn();
+        }
         debug!("Rabbit spawned new rabbits after eating 2 dandelions!");
     }
 }
@@ -653,7 +634,7 @@ fn update_fire_system(
     dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<FireIgnition>)>,
     mut fire_manager: ResMut<FireManager>,
     time: Res<Time>,
-    asset_server: Res<AssetServer>,
+    assets: Res<GameAssets>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
 ) {
@@ -725,7 +706,7 @@ fn update_fire_system(
 
         // Spawn pending chain fires (batched)
         for pending_fire in fire_manager.pending_fires.drain(..) {
-            spawn_fire_ignition_with_generation(&mut commands, &asset_server, pending_fire.position, pending_fire.generation);
+            spawn_fire_ignition_with_generation(&mut commands, &assets, pending_fire.position, pending_fire.generation);
         }
     }
 }
@@ -741,7 +722,9 @@ fn cleanup_expired_entities(
     for (entity, rabbit) in rabbit_query.iter() {
         if rabbit.lifetime.just_finished() {
             rabbit_targeting.clear_rabbit_targets(entity);
-            commands.entity(entity).despawn();
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
             debug!("Rabbit expired after 3 seconds");
         }
     }
@@ -749,7 +732,9 @@ fn cleanup_expired_entities(
     // Clean up expired fires
     for (entity, fire) in fire_query.iter() {
         if fire.lifetime.just_finished() {
-            commands.entity(entity).despawn();
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
         }
     }
 }
@@ -760,7 +745,9 @@ fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With
     commands.remove_resource::<RabbitTargeting>();
 
     for entity in &powerup_entities {
-        commands.entity(entity).despawn();
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.despawn();
+        }
     }
 
     debug!("Powerups cleaned up");

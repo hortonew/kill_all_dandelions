@@ -26,21 +26,55 @@ impl Default for GameState {
 
 fn main() -> AppExit {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Kill All Dandelions".into(),
-                resizable: true,
-                fit_canvas_to_parent: true,
-                prevent_default_event_handling: false,
-                ..default()
-            }),
-            ..default()
-        }).set(bevy::log::LogPlugin {
-            level: bevy::log::Level::INFO,
-            filter: "wgpu=warn,naga=warn".to_string(),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Kill All Dandelions".into(),
+                        resizable: true,
+                        fit_canvas_to_parent: true,
+                        prevent_default_event_handling: false,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(bevy::log::LogPlugin {
+                    level: bevy::log::Level::INFO,
+                    filter: "wgpu=warn,naga=warn".to_string(),
+                    ..default()
+                }),
+        )
         .init_state::<GameState>()
+        .add_systems(Startup, preload_assets)
         .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin))
         .run()
+}
+
+/// Resource holding all preloaded asset handles
+#[derive(Resource, Clone)]
+pub struct GameAssets {
+    pub bunny: Handle<Image>,
+    pub flamethrower: Handle<Image>,
+    pub dandelion_tiny: Handle<Image>,
+    pub dandelion_small: Handle<Image>,
+    pub dandelion_medium: Handle<Image>,
+    pub dandelion_large: Handle<Image>,
+    pub dandelion_huge: Handle<Image>,
+    pub dandelion: Handle<Image>,
+    pub seed: Handle<Image>,
+}
+
+fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let assets = GameAssets {
+        bunny: asset_server.load("bunny.png"),
+        flamethrower: asset_server.load("flamethrower.png"),
+        dandelion_tiny: asset_server.load("dandelion_tiny.png"),
+        dandelion_small: asset_server.load("dandelion_small.png"),
+        dandelion_medium: asset_server.load("dandelion_medium.png"),
+        dandelion_large: asset_server.load("dandelion_large.png"),
+        dandelion_huge: asset_server.load("dandelion_huge.png"),
+        dandelion: asset_server.load("dandelion.png"),
+        seed: asset_server.load("seed.png"),
+    };
+    commands.insert_resource(assets);
 }

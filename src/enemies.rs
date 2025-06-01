@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashSet;
 
+use crate::GameAssets;
 use crate::GameState;
 use crate::pause_menu::PauseState;
 use crate::playing::GameData;
@@ -408,7 +409,9 @@ fn cleanup_enemies(mut commands: Commands, enemy_entities: Query<Entity, With<En
     commands.remove_resource::<VarietySpawnTimer>();
 
     for entity in &enemy_entities {
-        commands.entity(entity).despawn();
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.despawn();
+        }
     }
 
     debug!("Enemies cleaned up");
@@ -474,6 +477,9 @@ fn update_seed_orbs(
 
         // Spawn new dandelion when timer finishes
         if orb.spawn_timer.finished() {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
             let size = DandelionSize::Tiny;
             commands.spawn((
                 Sprite {
@@ -487,7 +493,6 @@ fn update_seed_orbs(
             ));
 
             // Remove the seed orb and update dandelion count
-            commands.entity(entity).despawn();
             game_data.dandelion_count += 1;
             area_tracker.total_area += size.visual_area();
             debug!("Seed orb spawned new dandelion at ({:.1}, {:.1})", orb.target_position.x, orb.target_position.y);
@@ -558,8 +563,12 @@ fn check_dandelion_merging(
         area_tracker.total_area += new_size.visual_area();
 
         // Remove the two original dandelions
-        commands.entity(entity1).despawn();
-        commands.entity(entity2).despawn();
+        if let Ok(mut ec) = commands.get_entity(entity1) {
+            ec.despawn();
+        }
+        if let Ok(mut ec) = commands.get_entity(entity2) {
+            ec.despawn();
+        }
 
         // Spawn merge effect
         spawn_merge_effect(&mut commands, merge_pos, new_size);
@@ -830,11 +839,11 @@ fn spawn_variety_dandelions(
 }
 
 /// Spawn a ring of dandelions for testing fire spread
-pub fn spawn_dandelion_ring(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
+pub fn spawn_dandelion_ring(commands: &mut Commands, assets: &GameAssets, position: Vec2) {
     let radius = 100.0;
     let dandelion_count = 12;
     let size = DandelionSize::Tiny;
-
+    let image_handle = assets.dandelion_tiny.clone();
     for i in 0..dandelion_count {
         let angle = (i as f32) * (std::f32::consts::PI * 2.0 / dandelion_count as f32);
         let offset = Vec2::new(angle.cos(), angle.sin()) * radius;
@@ -842,7 +851,7 @@ pub fn spawn_dandelion_ring(commands: &mut Commands, asset_server: &AssetServer,
 
         commands.spawn((
             Sprite {
-                image: asset_server.load(size.asset_path()),
+                image: image_handle.clone(),
                 color: Color::WHITE,
                 ..default()
             },
