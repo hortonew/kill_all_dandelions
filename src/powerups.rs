@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rand::Rng;
+use std::collections::HashMap;
 
 use crate::GameState;
 use crate::enemies::{Dandelion, DandelionAreaTracker};
@@ -97,6 +98,40 @@ struct PowerupEffect {
 #[derive(Component)]
 struct PowerupEntity;
 
+/// Resource to track dandelion targeting to prevent rabbits from swarming the same target
+#[derive(Resource, Default)]
+struct RabbitTargeting {
+    /// Maps dandelion entity to the rabbit entity targeting it
+    targets: HashMap<Entity, Entity>,
+}
+
+impl RabbitTargeting {
+    /// Reserve a dandelion for a specific rabbit
+    fn claim_target(&mut self, rabbit: Entity, dandelion: Entity) {
+        self.targets.insert(dandelion, rabbit);
+    }
+
+    /// Check if a dandelion is already being targeted
+    fn is_targeted(&self, dandelion: Entity) -> bool {
+        self.targets.contains_key(&dandelion)
+    }
+
+    /// Remove a target claim (when rabbit dies or changes target)
+    fn release_target(&mut self, dandelion: Entity) {
+        self.targets.remove(&dandelion);
+    }
+
+    /// Get the rabbit targeting a specific dandelion
+    fn get_targeting_rabbit(&self, dandelion: Entity) -> Option<Entity> {
+        self.targets.get(&dandelion).copied()
+    }
+
+    /// Clear all targets for a specific rabbit (when rabbit dies)
+    fn clear_rabbit_targets(&mut self, rabbit: Entity) {
+        self.targets.retain(|_, &mut targeting_rabbit| targeting_rabbit != rabbit);
+    }
+}
+
 /// Component for rabbit entities
 #[derive(Component)]
 struct Rabbit {
@@ -139,6 +174,7 @@ impl Default for FireIgnition {
 fn setup_powerup_timer(mut commands: Commands) {
     commands.insert_resource(PowerupSpawnTimer::default());
     commands.insert_resource(SelectedPowerup::default());
+    commands.insert_resource(RabbitTargeting::default());
 }
 
 /// Spawn powerups at random positions
@@ -342,41 +378,44 @@ fn spawn_fire_ignition(commands: &mut Commands, asset_server: &AssetServer, posi
     ));
 }
 
-/// Update rabbit behavior - target and move towards dandelions
+/// Update rabbit behavior - target and move towards dandelions with team coordination
 fn update_rabbits(
     mut commands: Commands,
     mut rabbit_query: Query<(Entity, &mut Transform, &mut Rabbit)>,
-    dandelion_query: Query<(Entity, &Transform), (With<Dandelion>, Without<Rabbit>)>,
+    dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<Rabbit>)>,
     time: Res<Time>,
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
+    mut rabbit_targeting: ResMut<RabbitTargeting>,
 ) {
+    // First, clean up any invalid targets from the targeting resource
+    let valid_dandelions: std::collections::HashSet<Entity> = dandelion_query.iter().map(|(e, _, _)| e).collect();
+    rabbit_targeting.targets.retain(|&dandelion, _| valid_dandelions.contains(&dandelion));
+
     for (rabbit_entity, mut rabbit_transform, mut rabbit) in rabbit_query.iter_mut() {
         rabbit.lifetime.tick(time.delta());
 
-        // Find nearest dandelion if no current target or target is invalid
+        // Find optimal dandelion target if no current target or target is invalid
         if rabbit.target.is_none() || dandelion_query.get(rabbit.target.unwrap()).is_err() {
-            let rabbit_pos = rabbit_transform.translation.truncate();
-            let mut nearest_entity = None;
-            let mut nearest_distance = f32::INFINITY;
-
-            for (dandelion_entity, dandelion_transform) in dandelion_query.iter() {
-                let dandelion_pos = dandelion_transform.translation.truncate();
-                let distance = rabbit_pos.distance(dandelion_pos);
-
-                if distance < nearest_distance {
-                    nearest_distance = distance;
-                    nearest_entity = Some(dandelion_entity);
-                }
+            // Release any previous target claim
+            if let Some(old_target) = rabbit.target {
+                rabbit_targeting.release_target(old_target);
             }
 
-            rabbit.target = nearest_entity;
+            let new_target = find_best_dandelion_target(rabbit_entity, rabbit_transform.translation.truncate(), &dandelion_query, &rabbit_targeting);
+
+            // Claim the new target
+            if let Some(target_entity) = new_target {
+                rabbit_targeting.claim_target(rabbit_entity, target_entity);
+            }
+
+            rabbit.target = new_target;
         }
 
         // Move towards target
         if let Some(target_entity) = rabbit.target {
-            if let Ok((_, target_transform)) = dandelion_query.get(target_entity) {
+            if let Ok((_, target_transform, target_dandelion)) = dandelion_query.get(target_entity) {
                 let rabbit_pos = rabbit_transform.translation.truncate();
                 let target_pos = target_transform.translation.truncate();
                 let direction = (target_pos - rabbit_pos).normalize_or_zero();
@@ -389,25 +428,40 @@ fn update_rabbits(
                 let distance = rabbit_pos.distance(target_pos);
                 if distance <= 25.0 {
                     // Close enough to eat
+                    // Release the target claim
+                    rabbit_targeting.release_target(target_entity);
+
                     // Remove the dandelion
                     commands.entity(target_entity).despawn();
 
-                    // Update tracking
-                    // For now, assume we're eating a small area amount
-                    area_tracker.total_area -= 1000.0; // Approximate value
+                    // Update tracking - use actual dandelion size
+                    area_tracker.total_area -= target_dandelion.size.visual_area();
                     game_data.add_dandelion_kill();
                     game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
 
                     rabbit.dandelions_eaten += 1;
                     rabbit.target = None; // Look for new target
 
-                    info!("Rabbit ate a dandelion! Total eaten: {}", rabbit.dandelions_eaten);
+                    info!(
+                        "Rabbit ate a {} dandelion! Total eaten: {}",
+                        match target_dandelion.size {
+                            crate::enemies::DandelionSize::Tiny => "tiny",
+                            crate::enemies::DandelionSize::Small => "small",
+                            crate::enemies::DandelionSize::Medium => "medium",
+                            crate::enemies::DandelionSize::Large => "large",
+                            crate::enemies::DandelionSize::Huge => "huge",
+                        },
+                        rabbit.dandelions_eaten
+                    );
 
                     // If rabbit ate 2 dandelions, spawn a new rabbit
                     if rabbit.dandelions_eaten >= 2 {
                         let spawn_pos = rabbit_transform.translation.truncate();
                         spawn_rabbits(&mut commands, &asset_server, spawn_pos);
                         info!("Rabbit spawned a new rabbit after eating 2 dandelions!");
+
+                        // Clear all targets for this rabbit before removing it
+                        rabbit_targeting.clear_rabbit_targets(rabbit_entity);
 
                         // Remove this rabbit after spawning
                         commands.entity(rabbit_entity).despawn();
@@ -417,6 +471,47 @@ fn update_rabbits(
             }
         }
     }
+}
+
+/// Find the best dandelion target for a rabbit using team coordination
+fn find_best_dandelion_target(
+    rabbit_entity: Entity,
+    rabbit_pos: Vec2,
+    dandelion_query: &Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<Rabbit>)>,
+    rabbit_targeting: &RabbitTargeting,
+) -> Option<Entity> {
+    let mut best_target = None;
+    let mut best_score = f32::NEG_INFINITY;
+
+    for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
+        // Skip if already being targeted by another rabbit
+        if rabbit_targeting.is_targeted(dandelion_entity) && rabbit_targeting.get_targeting_rabbit(dandelion_entity) != Some(rabbit_entity) {
+            continue;
+        }
+
+        let dandelion_pos = dandelion_transform.translation.truncate();
+        let distance = rabbit_pos.distance(dandelion_pos);
+
+        // Calculate score based on distance and dandelion size
+        // Closer dandelions get higher scores, larger dandelions get bonus points
+        let size_bonus = match dandelion.size {
+            crate::enemies::DandelionSize::Tiny => 1.0,
+            crate::enemies::DandelionSize::Small => 1.2,
+            crate::enemies::DandelionSize::Medium => 1.5,
+            crate::enemies::DandelionSize::Large => 2.0,
+            crate::enemies::DandelionSize::Huge => 3.0,
+        };
+
+        // Score is inverse of distance with size bonus
+        let score = (1000.0 / (distance + 1.0)) * size_bonus;
+
+        if score > best_score {
+            best_score = score;
+            best_target = Some(dandelion_entity);
+        }
+    }
+
+    best_target
 }
 
 /// Update fire ignition effects and damage dandelions
@@ -497,9 +592,11 @@ fn update_fire_ignition(
 }
 
 /// Clean up expired rabbits
-fn cleanup_expired_rabbits(mut commands: Commands, rabbit_query: Query<(Entity, &Rabbit)>) {
+fn cleanup_expired_rabbits(mut commands: Commands, rabbit_query: Query<(Entity, &Rabbit)>, mut rabbit_targeting: ResMut<RabbitTargeting>) {
     for (entity, rabbit) in rabbit_query.iter() {
         if rabbit.lifetime.just_finished() {
+            // Clear all targets for this rabbit before removing it
+            rabbit_targeting.clear_rabbit_targets(entity);
             commands.entity(entity).despawn();
             info!("Rabbit expired after 3 seconds");
         }
@@ -519,6 +616,7 @@ fn cleanup_expired_fire(mut commands: Commands, fire_query: Query<(Entity, &Fire
 fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With<PowerupEntity>>) {
     commands.remove_resource::<PowerupSpawnTimer>();
     commands.remove_resource::<SelectedPowerup>();
+    commands.remove_resource::<RabbitTargeting>();
 
     for entity in &powerup_entities {
         commands.entity(entity).despawn();
