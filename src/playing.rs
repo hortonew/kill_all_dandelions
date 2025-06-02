@@ -17,7 +17,7 @@ pub struct PlayingPlugin;
 
 impl Plugin for PlayingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
+        app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui).chain())
             .add_systems(
                 Update,
                 (
@@ -31,10 +31,10 @@ impl Plugin for PlayingPlugin {
                     .run_if(in_state(PauseState::Playing))
                     .run_if(in_state(GameState::Playing)),
             )
-            .add_systems(OnEnter(GameState::Playing), play_level1_music)
+            .add_systems(OnEnter(GameState::Playing), play_level1_music.after(setup_game_resources))
             .add_systems(OnExit(GameState::Playing), cleanup_game)
-            .add_systems(OnEnter(PauseState::Paused), toggle_level1_music)
-            .add_systems(OnExit(PauseState::Paused), toggle_level1_music);
+            .add_systems(OnEnter(PauseState::Paused), pause_level1_music)
+            .add_systems(OnExit(PauseState::Paused), pause_level1_music);
     }
 }
 
@@ -51,6 +51,7 @@ pub struct GameData {
     pub dandelion_count: u32,
     pub slash_mode: bool,
     pub slash_offset: f32,
+    pub music_enabled: bool,
 }
 
 impl GameData {
@@ -67,6 +68,7 @@ impl GameData {
             dandelion_count: 0,
             slash_mode: true,
             slash_offset: Self::DEFAULT_SLASH_OFFSET,
+            music_enabled: true,
         }
     }
 
@@ -90,6 +92,10 @@ impl GameData {
 
     pub fn toggle_slash_mode(&mut self) {
         self.slash_mode = !self.slash_mode;
+    }
+
+    pub fn toggle_music(&mut self) {
+        self.music_enabled = !self.music_enabled;
     }
 }
 
@@ -116,6 +122,10 @@ struct PauseButton;
 /// Button for switching attack mode
 #[derive(Component)]
 struct AttackModeButton;
+
+/// Button for toggling music
+#[derive(Component)]
+struct MusicButton;
 
 /// Component for visual slash effect
 #[derive(Component)]
@@ -328,6 +338,26 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 .with_children(|parent| {
                                     parent.spawn((Text::new("Mode: Click"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
                                 });
+
+                            // Music toggle button
+                            parent
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(90.0),
+                                        height: Val::Px(45.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgb(0.4, 0.6, 0.4)),
+                                    BorderRadius::all(Val::Px(8.0)),
+                                    MusicButton,
+                                    GameEntity,
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn((Text::new("♪ ON"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                });
                         });
                 });
         });
@@ -363,13 +393,23 @@ fn handle_game_input(
 
 /// Handle mobile-friendly button interactions
 fn handle_button_interactions(
-    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, Option<&PauseButton>, Option<&AttackModeButton>), (Changed<Interaction>, With<Button>)>,
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            &mut BackgroundColor,
+            Option<&PauseButton>,
+            Option<&AttackModeButton>,
+            Option<&MusicButton>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
     pause_state: Res<State<PauseState>>,
     mut next_pause_state: ResMut<NextState<PauseState>>,
     mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
     mut game_data: ResMut<GameData>,
+    music_query: Query<&AudioSink, With<Level1Music>>,
 ) {
-    for (interaction, mut color, pause_button, attack_mode_button) in &mut interaction_query {
+    for (interaction, mut color, pause_button, attack_mode_button, music_button) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => {
                 if pause_button.is_some() {
@@ -388,12 +428,26 @@ fn handle_button_interactions(
                     game_data.toggle_slash_mode();
                     info!("Switched to {} mode", if game_data.slash_mode { "slash" } else { "click" });
                 }
+
+                if music_button.is_some() {
+                    game_data.toggle_music();
+                    if let Ok(sink) = music_query.single() {
+                        if game_data.music_enabled {
+                            sink.play();
+                        } else {
+                            sink.pause();
+                        }
+                    }
+                    info!("Music toggled: {}", if game_data.music_enabled { "ON" } else { "OFF" });
+                }
             }
             Interaction::Hovered => {
                 if pause_button.is_some() {
                     *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.7));
                 } else if attack_mode_button.is_some() {
                     *color = BackgroundColor(Color::srgb(0.7, 0.5, 0.5));
+                } else if music_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.5, 0.7, 0.5));
                 }
             }
             Interaction::None => {
@@ -401,6 +455,8 @@ fn handle_button_interactions(
                     *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.6));
                 } else if attack_mode_button.is_some() {
                     *color = BackgroundColor(Color::srgb(0.6, 0.4, 0.4));
+                } else if music_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.4, 0.6, 0.4));
                 }
             }
         }
@@ -503,13 +559,28 @@ fn update_ui(
 }
 
 /// Update mobile button text to match current mode
-fn update_button_text(game_data: Res<GameData>, attack_mode_button_query: Query<&Children, With<AttackModeButton>>, mut text_query: Query<&mut Text>) {
+fn update_button_text(
+    game_data: Res<GameData>,
+    attack_mode_button_query: Query<&Children, With<AttackModeButton>>,
+    music_button_query: Query<&Children, With<MusicButton>>,
+    mut text_query: Query<&mut Text>,
+) {
     let mode_text = if game_data.slash_mode { "Mode: Slash" } else { "Mode: Click" };
 
     for children in attack_mode_button_query.iter() {
         for child in children.iter() {
             if let Ok(mut text) = text_query.get_mut(child) {
                 **text = mode_text.to_string();
+            }
+        }
+    }
+
+    let music_text = if game_data.music_enabled { "Music ON" } else { "Music OFF" };
+
+    for children in music_button_query.iter() {
+        for child in children.iter() {
+            if let Ok(mut text) = text_query.get_mut(child) {
+                **text = music_text.to_string();
             }
         }
     }
@@ -594,20 +665,21 @@ fn cleanup_game(
 #[derive(Component)]
 struct Level1Music;
 
-fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands) {
+fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands, game_data: Res<GameData>) {
     let music: Handle<AudioSource> = asset_server.load("audio/level1.wav");
     commands.spawn((
         AudioPlayer(music),
         PlaybackSettings {
             mode: bevy::audio::PlaybackMode::Loop,
+            paused: !game_data.music_enabled,
             ..default()
         },
         Level1Music,
     ));
 }
 
-fn toggle_level1_music(query: Query<&AudioSink, With<Level1Music>>) {
+fn pause_level1_music(query: Query<&AudioSink, With<Level1Music>>) {
     if let Ok(sink) = query.single() {
-        sink.toggle_playback();
+        sink.pause();
     }
 }
