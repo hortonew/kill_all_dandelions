@@ -20,6 +20,12 @@ const SPAWN_MARGIN: f32 = 50.0;
 const TOP_UI_HEIGHT_RATIO: f32 = 0.12;
 const BOTTOM_UI_HEIGHT_RATIO: f32 = 0.08;
 
+/// Component to track rabbit sound duration
+#[derive(Component)]
+struct RabbitSoundTimer {
+    timer: Timer,
+}
+
 /// Plugin for handling powerup spawning and behavior
 pub struct PowerupsPlugin;
 
@@ -37,6 +43,7 @@ impl Plugin for PowerupsPlugin {
                     update_rabbits,
                     update_fire_system,
                     cleanup_expired_entities,
+                    update_rabbit_sound_timers,
                 )
                     .run_if(in_state(GameState::Playing))
                     .run_if(in_state(PauseState::Playing)),
@@ -516,6 +523,9 @@ fn handle_rabbit_eating_dandelion(
     game_data: &mut GameData,
     area_tracker: &mut DandelionAreaTracker,
 ) {
+    // Play rabbit eating sound
+    play_rabbit_sound(commands, assets);
+
     // Release the target claim and remove dandelion
     rabbit_targeting.release_target(target_entity);
     if let Ok(mut ec) = commands.get_entity(target_entity) {
@@ -732,6 +742,32 @@ fn cleanup_expired_entities(
     // Clean up expired fires
     for (entity, fire) in fire_query.iter() {
         if fire.lifetime.just_finished() {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+    }
+}
+
+/// Play rabbit sound effect for limited duration
+fn play_rabbit_sound(commands: &mut Commands, game_assets: &GameAssets) {
+    commands.spawn((
+        AudioPlayer(game_assets.rabbit_sound.clone()),
+        PlaybackSettings {
+            mode: bevy::audio::PlaybackMode::Once,
+            ..default()
+        },
+        RabbitSoundTimer {
+            timer: Timer::from_seconds(0.4, TimerMode::Once),
+        },
+    ));
+}
+
+/// Update rabbit sound timers and despawn audio entities when timer expires
+fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound_query: Query<(Entity, &mut RabbitSoundTimer)>) {
+    for (entity, mut sound_timer) in sound_query.iter_mut() {
+        sound_timer.timer.tick(time.delta());
+        if sound_timer.timer.finished() {
             if let Ok(mut ec) = commands.get_entity(entity) {
                 ec.despawn();
             }

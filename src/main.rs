@@ -63,6 +63,7 @@ pub struct GameAssets {
     pub dandelion: Handle<Image>,
     pub seed: Handle<Image>,
     pub slash_sound: Handle<AudioSource>,
+    pub rabbit_sound: Handle<AudioSource>,
 }
 
 fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -77,6 +78,7 @@ fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         dandelion: asset_server.load("dandelion.png"),
         seed: asset_server.load("seed.png"),
         slash_sound: asset_server.load("audio/slash.wav"),
+        rabbit_sound: asset_server.load("audio/rabbit.wav"),
     };
     commands.insert_resource(assets);
 }
