@@ -32,9 +32,7 @@ impl Plugin for PlayingPlugin {
                     .run_if(in_state(GameState::Playing)),
             )
             .add_systems(OnEnter(GameState::Playing), play_level1_music.after(setup_game_resources))
-            .add_systems(OnExit(GameState::Playing), cleanup_game)
-            .add_systems(OnEnter(PauseState::Paused), pause_level1_music)
-            .add_systems(OnExit(PauseState::Paused), pause_level1_music);
+            .add_systems(OnExit(GameState::Playing), cleanup_game);
     }
 }
 
@@ -675,11 +673,6 @@ fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands, gam
             ..default()
         },
         Level1Music,
+        crate::SoundEntity,
     ));
-}
-
-fn pause_level1_music(query: Query<&AudioSink, With<Level1Music>>) {
-    if let Ok(sink) = query.single() {
-        sink.pause();
-    }
 }

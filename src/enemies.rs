@@ -453,7 +453,7 @@ fn destroy_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandel
 
 /// Play slash sound effect
 fn play_slash_sound(commands: &mut Commands, game_assets: &crate::GameAssets) {
-    commands.spawn(AudioPlayer(game_assets.slash_sound.clone()));
+    commands.spawn((AudioPlayer(game_assets.slash_sound.clone()), crate::SoundEntity));
 }
 
 /// Debug system to count dandelions (runs less frequently)

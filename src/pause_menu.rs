@@ -9,8 +9,8 @@ impl Plugin for PauseMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<PauseState>()
             .init_state::<PauseMenuState>()
-            .add_systems(OnEnter(PauseState::Paused), setup_pause_menu_on_pause)
-            .add_systems(OnExit(PauseState::Paused), cleanup_pause_menu)
+            .add_systems(OnEnter(PauseState::Paused), (setup_pause_menu_on_pause, pause_sounds))
+            .add_systems(OnExit(PauseState::Paused), (cleanup_pause_menu, resume_sounds))
             .add_systems(
                 Update,
                 (handle_pause_input, pause_menu_interactions).run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::PauseMenu))),
@@ -453,4 +453,20 @@ fn powerup_help_interactions(
             },
         }
     }
+}
+
+/// Pause all active sound entities when game is paused
+fn pause_sounds(sound_query: Query<&AudioSink, With<crate::SoundEntity>>) {
+    for sink in &sound_query {
+        sink.pause();
+    }
+    debug!("All sounds paused");
+}
+
+/// Resume all active sound entities when game is resumed
+fn resume_sounds(sound_query: Query<&AudioSink, With<crate::SoundEntity>>) {
+    for sink in &sound_query {
+        sink.play();
+    }
+    debug!("All sounds resumed");
 }

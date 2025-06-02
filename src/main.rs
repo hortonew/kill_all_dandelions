@@ -24,6 +24,10 @@ impl Default for GameState {
     }
 }
 
+/// Marker component for sound entities that need cleanup
+#[derive(Component)]
+pub struct SoundEntity;
+
 fn main() -> AppExit {
     App::new()
         .add_plugins(
@@ -46,6 +50,7 @@ fn main() -> AppExit {
         )
         .init_state::<GameState>()
         .add_systems(Startup, preload_assets)
+        .add_systems(OnExit(GameState::Playing), cleanup_sounds)
         .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin))
         .run()
 }
@@ -81,4 +86,14 @@ fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         rabbit_sound: asset_server.load("audio/rabbit.wav"),
     };
     commands.insert_resource(assets);
+}
+
+/// Cleanup sound entities when exiting playing state
+fn cleanup_sounds(mut commands: Commands, sound_entities: Query<Entity, With<SoundEntity>>) {
+    for entity in &sound_entities {
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.despawn();
+        }
+    }
+    debug!("Sound entities cleaned up");
 }

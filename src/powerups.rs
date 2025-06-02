@@ -760,6 +760,7 @@ fn play_rabbit_sound(commands: &mut Commands, game_assets: &GameAssets) {
         RabbitSoundTimer {
             timer: Timer::from_seconds(0.4, TimerMode::Once),
         },
+        crate::SoundEntity,
     ));
 }
 
