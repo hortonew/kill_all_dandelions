@@ -292,6 +292,7 @@ struct DandelionGameState<'w, 's> {
     game_data: ResMut<'w, GameData>,
     asset_server: Res<'w, AssetServer>,
     area_tracker: ResMut<'w, DandelionAreaTracker>,
+    game_assets: Res<'w, crate::GameAssets>,
 }
 
 /// Handle clicks and touches on dandelions
@@ -426,6 +427,9 @@ fn distance_point_to_line_segment(point: Vec2, line_start: Vec2, line_end: Vec2)
 fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
     dandelion.health = dandelion.health.saturating_sub(1);
 
+    // Play slash sound effect when dandelion is hit
+    play_slash_sound(&mut game_state.commands, &game_state.game_assets);
+
     if dandelion.health == 0 {
         destroy_dandelion(game_state, entity, dandelion, position);
     }
@@ -445,6 +449,11 @@ fn destroy_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandel
         "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
         position.x, position.y, game_state.game_data.score, game_state.game_data.combo, spawn_count
     );
+}
+
+/// Play slash sound effect
+fn play_slash_sound(commands: &mut Commands, game_assets: &crate::GameAssets) {
+    commands.spawn(AudioPlayer(game_assets.slash_sound.clone()));
 }
 
 /// Debug system to count dandelions (runs less frequently)
