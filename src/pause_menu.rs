@@ -69,7 +69,7 @@ enum PowerupHelpButton {
 
 /// Handle input while paused
 fn handle_pause_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut next_pause_state: ResMut<NextState<PauseState>>) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
+    if keyboard_input.just_pressed(KeyCode::KeyQ) {
         next_pause_state.set(PauseState::Playing);
     }
 }
@@ -212,7 +212,7 @@ fn cleanup_pause_menu(mut commands: Commands, pause_entities: Query<Entity, With
 
 /// Handle input while in powerup help screen
 fn handle_powerup_help_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
+    if keyboard_input.just_pressed(KeyCode::KeyQ) {
         next_pause_menu_state.set(PauseMenuState::PauseMenu);
     }
 }

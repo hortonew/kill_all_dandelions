@@ -5,7 +5,7 @@ use crate::pause_menu::{PauseMenuState, PauseState};
 
 // Constants for UI and gameplay
 const TOP_UI_HEIGHT: f32 = 12.0; // Viewport height percentage
-const BOTTOM_UI_HEIGHT: f32 = 8.0; // Viewport height percentage
+const BOTTOM_UI_HEIGHT: f32 = 10.0; // Viewport height percentage - increased for mobile buttons
 const UI_PADDING: f32 = 2.0; // Viewport width percentage
 const GRASS_BACKGROUND_COLOR: Color = Color::srgb(0.2, 0.6, 0.2);
 const UI_BACKGROUND_COLOR: Color = Color::srgba(0.0, 0.0, 0.0, 0.8);
@@ -20,7 +20,14 @@ impl Plugin for PlayingPlugin {
         app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui))
             .add_systems(
                 Update,
-                (handle_game_input, update_ui, update_combo_timer, update_slash_effects)
+                (
+                    handle_game_input,
+                    handle_button_interactions,
+                    update_ui,
+                    update_button_text,
+                    update_combo_timer,
+                    update_slash_effects,
+                )
                     .run_if(in_state(PauseState::Playing))
                     .run_if(in_state(GameState::Playing)),
             )
@@ -101,6 +108,14 @@ struct CurbAppealText;
 
 #[derive(Component)]
 struct AttackModeText;
+
+/// Button for pausing the game
+#[derive(Component)]
+struct PauseButton;
+
+/// Button for switching attack mode
+#[derive(Component)]
+struct AttackModeButton;
 
 /// Component for visual slash effect
 #[derive(Component)]
@@ -227,20 +242,21 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },));
 
-            // Bottom UI panel with instructions
+            // Bottom UI panel with instructions and mobile-friendly buttons
             parent
                 .spawn((
                     Node {
                         width: Val::Percent(100.0),
                         height: Val::Vh(BOTTOM_UI_HEIGHT),
                         padding: UiRect::all(Val::Vw(UI_PADDING)),
-                        justify_content: JustifyContent::Center,
+                        justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
                         ..default()
                     },
                     BackgroundColor(UI_BACKGROUND_COLOR),
                 ))
                 .with_children(|parent| {
+                    // Left side: Instructions with icon
                     parent
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
@@ -258,10 +274,60 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                             ));
                             parent.spawn((
-                                Text::new("ESC: Return to Menu  |  TAB: Switch Attack Mode  |  Click/Slash dandelions to kill them!"),
-                                TextFont { font_size: 16.0, ..default() },
+                                Text::new("Q: Pause  |  Tap buttons or dandelions!"),
+                                TextFont { font_size: 15.0, ..default() },
                                 TextColor(Color::srgb(0.8, 0.8, 0.8)),
                             ));
+                        });
+
+                    // Right side: Mobile control buttons
+                    parent
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(10.0),
+                            ..default()
+                        },))
+                        .with_children(|parent| {
+                            // Pause button
+                            parent
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(90.0),
+                                        height: Val::Px(45.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgb(0.4, 0.4, 0.6)),
+                                    BorderRadius::all(Val::Px(8.0)),
+                                    PauseButton,
+                                    GameEntity,
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn((Text::new("Pause"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                });
+
+                            // Attack mode toggle button
+                            parent
+                                .spawn((
+                                    Button,
+                                    Node {
+                                        width: Val::Px(120.0),
+                                        height: Val::Px(45.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgb(0.6, 0.4, 0.4)),
+                                    BorderRadius::all(Val::Px(8.0)),
+                                    AttackModeButton,
+                                    GameEntity,
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn((Text::new("Mode: Click"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                });
                         });
                 });
         });
@@ -275,7 +341,7 @@ fn handle_game_input(
     mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
     mut game_data: ResMut<GameData>,
 ) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
+    if keyboard_input.just_pressed(KeyCode::KeyQ) {
         match pause_state.get() {
             PauseState::Playing => {
                 next_pause_state.set(PauseState::Paused);
@@ -292,6 +358,52 @@ fn handle_game_input(
         game_data.toggle_slash_mode();
         let mode_text = if game_data.slash_mode { "slash" } else { "click" };
         info!("Switched to {} mode", mode_text);
+    }
+}
+
+/// Handle mobile-friendly button interactions
+fn handle_button_interactions(
+    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, Option<&PauseButton>, Option<&AttackModeButton>), (Changed<Interaction>, With<Button>)>,
+    pause_state: Res<State<PauseState>>,
+    mut next_pause_state: ResMut<NextState<PauseState>>,
+    mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
+    mut game_data: ResMut<GameData>,
+) {
+    for (interaction, mut color, pause_button, attack_mode_button) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                if pause_button.is_some() {
+                    match pause_state.get() {
+                        PauseState::Playing => {
+                            next_pause_state.set(PauseState::Paused);
+                            next_pause_menu_state.set(PauseMenuState::PauseMenu);
+                        }
+                        PauseState::Paused => {
+                            next_pause_state.set(PauseState::Playing);
+                        }
+                    }
+                }
+
+                if attack_mode_button.is_some() {
+                    game_data.toggle_slash_mode();
+                    info!("Switched to {} mode", if game_data.slash_mode { "slash" } else { "click" });
+                }
+            }
+            Interaction::Hovered => {
+                if pause_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.7));
+                } else if attack_mode_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.7, 0.5, 0.5));
+                }
+            }
+            Interaction::None => {
+                if pause_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.6));
+                } else if attack_mode_button.is_some() {
+                    *color = BackgroundColor(Color::srgb(0.6, 0.4, 0.4));
+                }
+            }
+        }
     }
 }
 
@@ -388,6 +500,19 @@ fn update_ui(
     update_combo_timer_display(&game_data, combo_timer_bar_query);
     update_curb_appeal_display(dandelion_query, curb_appeal_query);
     update_attack_mode_display(&game_data, mode_query);
+}
+
+/// Update mobile button text to match current mode
+fn update_button_text(game_data: Res<GameData>, attack_mode_button_query: Query<&Children, With<AttackModeButton>>, mut text_query: Query<&mut Text>) {
+    let mode_text = if game_data.slash_mode { "Mode: Slash" } else { "Mode: Click" };
+
+    for children in attack_mode_button_query.iter() {
+        for child in children.iter() {
+            if let Ok(mut text) = text_query.get_mut(child) {
+                **text = mode_text.to_string();
+            }
+        }
+    }
 }
 
 /// Update combo timer and reset combo when it expires
