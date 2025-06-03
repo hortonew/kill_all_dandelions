@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 
 mod enemies;
+mod levels;
 mod menu;
 mod pause_menu;
 mod playing;
 mod powerups;
 use enemies::EnemiesPlugin;
+use levels::LevelsPlugin;
 use menu::MenuPlugin;
 use pause_menu::PauseMenuPlugin;
 use playing::PlayingPlugin;
@@ -51,7 +53,7 @@ fn main() -> AppExit {
         .init_state::<GameState>()
         .add_systems(Startup, preload_assets)
         .add_systems(OnExit(GameState::Playing), cleanup_sounds)
-        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin))
+        .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin, LevelsPlugin))
         .run()
 }
 

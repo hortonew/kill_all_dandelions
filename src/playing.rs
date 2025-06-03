@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::GameState;
+use crate::levels::{LevelCompleteEvent, LevelData, LevelStartEvent};
 use crate::pause_menu::{PauseMenuState, PauseState};
 
 // Constants for UI and gameplay
@@ -17,22 +18,27 @@ pub struct PlayingPlugin;
 
 impl Plugin for PlayingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (setup_game_resources, setup_game_camera, setup_game_ui).chain())
-            .add_systems(
-                Update,
-                (
-                    handle_game_input,
-                    handle_button_interactions,
-                    update_ui,
-                    update_button_text,
-                    update_combo_timer,
-                    update_slash_effects,
-                )
-                    .run_if(in_state(PauseState::Playing))
-                    .run_if(in_state(GameState::Playing)),
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            (setup_game_resources, setup_game_camera, setup_game_ui, setup_level_complete_overlay).chain(),
+        )
+        .add_systems(
+            Update,
+            (
+                handle_game_input,
+                handle_button_interactions,
+                update_ui,
+                update_button_text,
+                update_combo_timer,
+                update_slash_effects,
+                handle_level_completion_events,
+                handle_level_completion_interactions,
             )
-            .add_systems(OnEnter(GameState::Playing), play_level1_music.after(setup_game_resources))
-            .add_systems(OnExit(GameState::Playing), cleanup_game);
+                .run_if(in_state(PauseState::Playing))
+                .run_if(in_state(GameState::Playing)),
+        )
+        .add_systems(OnEnter(GameState::Playing), play_level1_music.after(setup_game_resources))
+        .add_systems(OnExit(GameState::Playing), cleanup_game);
     }
 }
 
@@ -113,6 +119,26 @@ struct CurbAppealText;
 #[derive(Component)]
 struct AttackModeText;
 
+/// Component for level progress display
+#[derive(Component)]
+struct LevelProgressText;
+
+/// Component for level completion overlay
+#[derive(Component)]
+struct LevelCompleteOverlay;
+
+/// Component for level completion text elements
+#[derive(Component)]
+struct LevelCompleteText;
+
+/// Component for level completion stars display
+#[derive(Component)]
+struct LevelCompleteStars;
+
+/// Component for level completion continue button
+#[derive(Component)]
+struct LevelCompleteContinueButton;
+
 /// Button for pausing the game
 #[derive(Component)]
 struct PauseButton;
@@ -132,9 +158,16 @@ struct SlashEffect {
 }
 
 /// Initialize game resources
-fn setup_game_resources(mut commands: Commands) {
+fn setup_game_resources(mut commands: Commands, time: Res<Time>) {
     commands.insert_resource(GameData::new());
-    info!("Game started!");
+
+    // Initialize level session and start it fresh
+    // This ensures a clean start whether the resource exists or not
+    let mut level_session = crate::levels::LevelSession::default();
+    level_session.start(time.elapsed());
+    commands.insert_resource(level_session);
+
+    info!("Game started with fresh level session!");
 }
 
 /// Setup the game camera and background
@@ -240,6 +273,14 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 18.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.7, 0.3)),
                         AttackModeText,
+                    ));
+
+                    // Level progress display
+                    parent.spawn((
+                        Text::new("Progress: 0%"),
+                        TextFont { font_size: 18.0, ..default() },
+                        TextColor(Color::srgb(0.7, 0.9, 0.7)),
+                        LevelProgressText,
                     ));
                 });
 
@@ -488,7 +529,16 @@ fn calculate_curb_appeal(dandelion_query: &Query<&crate::enemies::Dandelion>) ->
 /// Update score display
 fn update_score_display(
     game_data: &GameData,
-    mut score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+    mut score_query: Query<
+        &mut Text,
+        (
+            With<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
 ) {
     if let Ok(mut text) = score_query.single_mut() {
         **text = format!("Score: {}", game_data.score);
@@ -498,7 +548,16 @@ fn update_score_display(
 /// Update combo display
 fn update_combo_display(
     game_data: &GameData,
-    mut combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+    mut combo_query: Query<
+        &mut Text,
+        (
+            With<ComboText>,
+            Without<ScoreText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
 ) {
     if let Ok(mut text) = combo_query.single_mut() {
         **text = format!("Combo: {}x", game_data.combo);
@@ -520,7 +579,16 @@ fn update_combo_timer_display(game_data: &GameData, mut combo_timer_bar_query: Q
 /// Update curb appeal display
 fn update_curb_appeal_display(
     dandelion_query: Query<&crate::enemies::Dandelion>,
-    mut curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>, Without<AttackModeText>)>,
+    mut curb_appeal_query: Query<
+        &mut Text,
+        (
+            With<CurbAppealText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
 ) {
     if let Ok(mut text) = curb_appeal_query.single_mut() {
         let curb_appeal = calculate_curb_appeal(&dandelion_query);
@@ -531,7 +599,16 @@ fn update_curb_appeal_display(
 /// Update attack mode display
 fn update_attack_mode_display(
     game_data: &GameData,
-    mut mode_query: Query<&mut Text, (With<AttackModeText>, Without<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
+    mut mode_query: Query<
+        &mut Text,
+        (
+            With<AttackModeText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<LevelProgressText>,
+        ),
+    >,
 ) {
     if let Ok(mut text) = mode_query.single_mut() {
         let mode_text = if game_data.slash_mode { "Slash" } else { "Click" };
@@ -539,14 +616,86 @@ fn update_attack_mode_display(
     }
 }
 
+/// Update level progress display
+fn update_level_progress_display(
+    game_data: &GameData,
+    level_data: &crate::levels::LevelData,
+    mut progress_query: Query<
+        &mut Text,
+        (
+            With<LevelProgressText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+        ),
+    >,
+) {
+    if let Ok(mut text) = progress_query.single_mut() {
+        if let Some(current_level) = level_data.get_current_level() {
+            let progress = (game_data.score as f32 / current_level.target_points as f32 * 100.0).min(100.0);
+            **text = format!("Target: {} | Progress: {:.0}%", current_level.target_points, progress);
+        } else {
+            **text = format!("Progress: {:.0}%", (game_data.score as f32).min(100.0));
+        }
+    }
+}
+
 /// Update game UI elements
 fn update_ui(
     game_data: Res<GameData>,
-    score_query: Query<&mut Text, (With<ScoreText>, Without<ComboText>, Without<CurbAppealText>, Without<AttackModeText>)>,
-    combo_query: Query<&mut Text, (With<ComboText>, Without<ScoreText>, Without<CurbAppealText>, Without<AttackModeText>)>,
+    level_data: Res<crate::levels::LevelData>,
+    score_query: Query<
+        &mut Text,
+        (
+            With<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
+    combo_query: Query<
+        &mut Text,
+        (
+            With<ComboText>,
+            Without<ScoreText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
     combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
-    curb_appeal_query: Query<&mut Text, (With<CurbAppealText>, Without<ScoreText>, Without<ComboText>, Without<AttackModeText>)>,
-    mode_query: Query<&mut Text, (With<AttackModeText>, Without<ScoreText>, Without<ComboText>, Without<CurbAppealText>)>,
+    curb_appeal_query: Query<
+        &mut Text,
+        (
+            With<CurbAppealText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
+    mode_query: Query<
+        &mut Text,
+        (
+            With<AttackModeText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<LevelProgressText>,
+        ),
+    >,
+    progress_query: Query<
+        &mut Text,
+        (
+            With<LevelProgressText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+        ),
+    >,
     dandelion_query: Query<&crate::enemies::Dandelion>,
 ) {
     update_score_display(&game_data, score_query);
@@ -554,6 +703,7 @@ fn update_ui(
     update_combo_timer_display(&game_data, combo_timer_bar_query);
     update_curb_appeal_display(dandelion_query, curb_appeal_query);
     update_attack_mode_display(&game_data, mode_query);
+    update_level_progress_display(&game_data, &level_data, progress_query);
 }
 
 /// Update mobile button text to match current mode
@@ -646,6 +796,9 @@ fn cleanup_game(
     // Remove game data resource
     commands.remove_resource::<GameData>();
 
+    // Remove level session resource to ensure fresh start on restart
+    commands.remove_resource::<crate::levels::LevelSession>();
+
     // Cleanup all game entities
     for entity in game_entities.iter() {
         if let Ok(mut ec) = commands.get_entity(entity) {
@@ -675,4 +828,204 @@ fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands, gam
         Level1Music,
         crate::SoundEntity,
     ));
+}
+
+/// Handle level completion events and transitions
+fn handle_level_completion_events(
+    mut commands: Commands,
+    mut level_complete_events: EventReader<LevelCompleteEvent>,
+    mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
+    mut level_complete_text_query: Query<&mut Text, With<LevelCompleteText>>,
+    mut level_complete_stars_query: Query<Entity, With<LevelCompleteStars>>,
+) {
+    for event in level_complete_events.read() {
+        // Show level complete overlay
+        for mut visibility in &mut level_complete_overlay_query {
+            *visibility = Visibility::Visible;
+        }
+
+        // Update level complete text with completion info
+        for mut text in &mut level_complete_text_query {
+            text.0 = format!(
+                "Level {} Complete!\nScore: {}\nTime: {:.1}s\nStars: {}",
+                event.level_id,
+                event.final_score,
+                event.completion_time.as_secs_f32(),
+                event.stars_earned
+            );
+        }
+
+        // Update stars display
+        for stars_entity in &mut level_complete_stars_query {
+            // Clear existing children and add new stars based on earned stars
+            commands.entity(stars_entity).with_children(|parent| {
+                for i in 0..3 {
+                    let star_color = if i < event.stars_earned {
+                        Color::srgb(1.0, 0.8, 0.0) // Gold star
+                    } else {
+                        Color::srgb(0.3, 0.3, 0.3) // Gray star
+                    };
+
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(30.0),
+                            margin: UiRect::all(Val::Px(5.0)),
+                            ..default()
+                        },
+                        BackgroundColor(star_color),
+                        BorderRadius::all(Val::Px(5.0)),
+                    ));
+                }
+            });
+        }
+
+        info!("Level completion overlay shown for level {}", event.level_id);
+    }
+}
+
+/// Handle interactions with the level completion overlay
+fn handle_level_completion_interactions(
+    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, Option<&LevelCompleteContinueButton>), (Changed<Interaction>, With<Button>)>,
+    mut game_data: ResMut<GameData>,
+    mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut level_data: ResMut<LevelData>,
+    mut level_start_events: EventWriter<LevelStartEvent>,
+) {
+    for (interaction, mut color, continue_button) in &mut interaction_query {
+        if continue_button.is_some() {
+            match *interaction {
+                Interaction::Pressed => {
+                    // Hide level complete overlay
+                    for mut visibility in &mut level_complete_overlay_query {
+                        *visibility = Visibility::Hidden;
+                    }
+
+                    // Reset game data for the next level
+                    game_data.score = 0;
+                    game_data.combo = 0;
+                    game_data.combo_timer.reset();
+                    game_data.dandelion_count = 0;
+
+                    // Check if there's a next level
+                    let current_level_id = level_data.current_level;
+                    let next_level_id = current_level_id + 1;
+
+                    if next_level_id <= 10 && level_data.get_level(next_level_id).is_some() {
+                        // Go to next level
+                        level_data.set_current_level(next_level_id);
+                        // Emit level start event for the new level
+                        level_start_events.write(LevelStartEvent { level_id: next_level_id });
+                        // Stay in playing state to continue with next level
+                        info!("Advancing to level {}", next_level_id);
+                    } else {
+                        // No more levels, return to main menu
+                        next_state.set(GameState::Menu);
+                        info!("All levels completed, returning to main menu");
+                    }
+                }
+                Interaction::Hovered => {
+                    *color = BackgroundColor(Color::srgb(0.3, 0.8, 0.3));
+                }
+                Interaction::None => {
+                    *color = BackgroundColor(Color::srgb(0.2, 0.7, 0.2));
+                }
+            }
+        }
+    }
+}
+
+/// Setup the level completion overlay UI
+fn setup_level_complete_overlay(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            Visibility::Hidden,
+            LevelCompleteOverlay,
+            GameEntity,
+        ))
+        .with_children(|parent| {
+            // Background panel
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Percent(80.0),
+                        height: Val::Percent(70.0),
+                        padding: UiRect::all(Val::Px(30.0)),
+                        flex_direction: FlexDirection::Column,
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.95)),
+                    BorderRadius::all(Val::Px(15.0)),
+                ))
+                .with_children(|parent| {
+                    // Level complete text
+                    parent.spawn((
+                        Text::new("Level Complete!"),
+                        TextFont { font_size: 48.0, ..default() },
+                        TextColor(Color::WHITE),
+                        LevelCompleteText,
+                        Node {
+                            margin: UiRect::bottom(Val::Px(20.0)),
+                            ..default()
+                        },
+                    ));
+
+                    // Stars display
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(200.0),
+                            height: Val::Px(50.0),
+                            flex_direction: FlexDirection::Row,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            margin: UiRect::bottom(Val::Px(30.0)),
+                            ..default()
+                        },
+                        LevelCompleteStars,
+                    ));
+
+                    // Continue button
+                    parent
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Px(200.0),
+                                height: Val::Px(60.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                margin: UiRect::top(Val::Px(20.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgb(0.2, 0.7, 0.2)),
+                            BorderRadius::all(Val::Px(10.0)),
+                            LevelCompleteContinueButton,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Text::new("Continue"),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 24.0,
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+                        });
+                });
+        });
 }

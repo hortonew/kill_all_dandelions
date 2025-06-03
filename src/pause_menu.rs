@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::GameState;
+use crate::levels::{LevelData, LevelStartEvent};
 
 /// Plugin for handling the pause menu
 pub struct PauseMenuPlugin;
@@ -19,6 +20,11 @@ impl Plugin for PauseMenuPlugin {
                 Update,
                 (handle_powerup_help_input, powerup_help_interactions).run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::PowerupHelp))),
             )
+            .add_systems(
+                Update,
+                (handle_level_selection_input, level_selection_interactions, update_star_displays)
+                    .run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::LevelSelection))),
+            )
             .add_systems(Update, switch_pause_menu_content.run_if(in_state(PauseState::Paused)));
     }
 }
@@ -35,6 +41,7 @@ pub enum PauseState {
 pub enum PauseMenuState {
     PauseMenu,
     PowerupHelp,
+    LevelSelection,
 }
 
 impl Default for PauseState {
@@ -59,12 +66,27 @@ enum PauseMenuButton {
     Resume,
     Restart,
     PowerupHelp,
+    LevelSelection,
 }
 
 /// Powerup help menu button types
 #[derive(Component)]
 enum PowerupHelpButton {
     Back,
+}
+
+/// Level selection menu button types
+#[derive(Component)]
+enum LevelSelectionButton {
+    Back,
+    LevelButton(u32),
+}
+
+/// Component for star display in level selection
+#[derive(Component)]
+struct StarDisplay {
+    level_id: u32,
+    star_index: u32, // 0, 1, or 2 for the three stars
 }
 
 /// Handle input while paused
@@ -169,6 +191,26 @@ fn setup_pause_menu(mut commands: Commands) {
                         .with_children(|parent| {
                             parent.spawn((Text::new("Powerup Help"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::WHITE)));
                         });
+
+                    parent
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Vw(40.0),
+                                max_width: Val::Px(250.0),
+                                height: Val::Vh(7.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgb(0.4, 0.6, 0.2)),
+                            BorderRadius::all(Val::Px(5.0)),
+                            PauseMenuButton::LevelSelection,
+                            PauseMenuEntity,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((Text::new("Level Selection"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::WHITE)));
+                        });
                 });
         });
 }
@@ -193,16 +235,21 @@ fn pause_menu_interactions(
                 PauseMenuButton::PowerupHelp => {
                     next_pause_menu_state.set(PauseMenuState::PowerupHelp);
                 }
+                PauseMenuButton::LevelSelection => {
+                    next_pause_menu_state.set(PauseMenuState::LevelSelection);
+                }
             },
             Interaction::Hovered => match button_type {
                 PauseMenuButton::Resume => *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.5)),
                 PauseMenuButton::Restart => *color = BackgroundColor(Color::srgb(0.8, 0.4, 0.4)),
                 PauseMenuButton::PowerupHelp => *color = BackgroundColor(Color::srgb(0.4, 0.6, 0.8)),
+                PauseMenuButton::LevelSelection => *color = BackgroundColor(Color::srgb(0.6, 0.8, 0.4)),
             },
             Interaction::None => match button_type {
                 PauseMenuButton::Resume => *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
                 PauseMenuButton::Restart => *color = BackgroundColor(Color::srgb(0.6, 0.3, 0.3)),
                 PauseMenuButton::PowerupHelp => *color = BackgroundColor(Color::srgb(0.3, 0.5, 0.7)),
+                PauseMenuButton::LevelSelection => *color = BackgroundColor(Color::srgb(0.4, 0.6, 0.2)),
             },
         }
     }
@@ -411,11 +458,230 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
         });
 }
 
+/// Setup level selection menu UI
+fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetServer>) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::all(Val::Vw(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            PauseMenuEntity,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Vw(90.0),
+                        max_width: Val::Px(800.0),
+                        height: Val::Vh(85.0),
+                        max_height: Val::Px(700.0),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::FlexStart,
+                        padding: UiRect::all(Val::Vh(2.0)),
+                        row_gap: Val::Vh(2.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
+                    BorderRadius::all(Val::Px(10.0)),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((Text::new("Level Selection"), TextFont { font_size: 28.0, ..default() }, TextColor(Color::WHITE)));
+
+                    // Level grid container
+                    parent
+                        .spawn((Node {
+                            width: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Vh(2.0),
+                            flex_grow: 1.0,
+                            overflow: Overflow::scroll_y(),
+                            ..default()
+                        },))
+                        .with_children(|parent| {
+                            // Create level cards in rows of 2
+                            for row in 0..5 {
+                                parent
+                                    .spawn((Node {
+                                        width: Val::Percent(100.0),
+                                        flex_direction: FlexDirection::Row,
+                                        justify_content: JustifyContent::SpaceEvenly,
+                                        column_gap: Val::Vw(3.0),
+                                        ..default()
+                                    },))
+                                    .with_children(|parent| {
+                                        for col in 0..2 {
+                                            let level_id = row * 2 + col + 1;
+                                            if level_id <= 10 {
+                                                // Create level card inline
+                                                parent
+                                                    .spawn((
+                                                        Button,
+                                                        Node {
+                                                            width: Val::Percent(45.0),
+                                                            height: Val::Vh(15.0),
+                                                            flex_direction: FlexDirection::Column,
+                                                            align_items: AlignItems::Center,
+                                                            justify_content: JustifyContent::Center,
+                                                            padding: UiRect::all(Val::Vh(1.0)),
+                                                            ..default()
+                                                        },
+                                                        BackgroundColor(if level_id == 1 {
+                                                            Color::srgb(0.4, 0.4, 0.6) // Level 1 is always unlocked
+                                                        } else {
+                                                            Color::srgb(0.3, 0.3, 0.3) // Default locked color
+                                                        }),
+                                                        BorderRadius::all(Val::Px(8.0)),
+                                                        LevelSelectionButton::LevelButton(level_id),
+                                                        PauseMenuEntity,
+                                                    ))
+                                                    .with_children(|parent| {
+                                                        // Level number
+                                                        parent.spawn((
+                                                            Text::new(format!("Level {}", level_id)),
+                                                            TextFont { font_size: 20.0, ..default() },
+                                                            TextColor(Color::WHITE),
+                                                        ));
+
+                                                        // Stars display
+                                                        parent
+                                                            .spawn((Node {
+                                                                flex_direction: FlexDirection::Row,
+                                                                column_gap: Val::Px(5.0),
+                                                                ..default()
+                                                            },))
+                                                            .with_children(|parent| {
+                                                                for star_index in 0..3 {
+                                                                    parent.spawn((
+                                                                        Text::new("☆"), // Hollow star - will be updated based on progress
+                                                                        TextFont { font_size: 16.0, ..default() },
+                                                                        TextColor(Color::srgb(0.8, 0.8, 0.2)),
+                                                                        StarDisplay { level_id, star_index }, // Will be updated
+                                                                    ));
+                                                                }
+                                                            });
+                                                    });
+                                            }
+                                        }
+                                    });
+                            }
+                        });
+
+                    // Back button
+                    parent
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Vw(30.0),
+                                max_width: Val::Px(200.0),
+                                height: Val::Vh(7.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                margin: UiRect::top(Val::Vh(2.5)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                            BorderRadius::all(Val::Px(5.0)),
+                            LevelSelectionButton::Back,
+                            PauseMenuEntity,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((Text::new("Back"), TextFont { font_size: 20.0, ..default() }, TextColor(Color::WHITE)));
+                        });
+                });
+        });
+}
+
+/// Update star displays based on level progress
+fn update_star_displays(mut star_query: Query<(&mut Text, &StarDisplay)>, level_data: Res<LevelData>) {
+    for (mut text, star_display) in &mut star_query {
+        if let Some(progress) = level_data.level_progress.get((star_display.level_id - 1) as usize) {
+            let filled_stars = progress.best_stars;
+
+            // Update star text based on index and progress
+            let star_text = if star_display.star_index < filled_stars {
+                "★" // Filled star
+            } else {
+                "☆" // Hollow star
+            };
+
+            text.0 = star_text.to_string();
+        }
+    }
+}
+
+/// Handle input while in level selection screen
+fn handle_level_selection_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>) {
+    if keyboard_input.just_pressed(KeyCode::KeyQ) {
+        next_pause_menu_state.set(PauseMenuState::PauseMenu);
+    }
+}
+
+/// Handle level selection button interactions
+fn level_selection_interactions(
+    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &LevelSelectionButton), (Changed<Interaction>, With<Button>)>,
+    mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
+    mut next_pause_state: ResMut<NextState<PauseState>>,
+    mut next_game_state: ResMut<NextState<GameState>>,
+    mut level_start_events: EventWriter<LevelStartEvent>,
+    level_data: Res<LevelData>,
+) {
+    for (interaction, mut color, button_type) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => match button_type {
+                LevelSelectionButton::Back => {
+                    next_pause_menu_state.set(PauseMenuState::PauseMenu);
+                }
+                LevelSelectionButton::LevelButton(level_id) => {
+                    if level_data.is_level_unlocked(*level_id) {
+                        // Start the selected level
+                        level_start_events.write(LevelStartEvent { level_id: *level_id });
+
+                        // Resume game and go to playing state
+                        next_pause_state.set(PauseState::Playing);
+                        next_game_state.set(GameState::Playing);
+
+                        info!("Starting level {}", level_id);
+                    }
+                }
+            },
+            Interaction::Hovered => match button_type {
+                LevelSelectionButton::Back => *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.5)),
+                LevelSelectionButton::LevelButton(level_id) => {
+                    if level_data.is_level_unlocked(*level_id) {
+                        *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.7));
+                    } else {
+                        *color = BackgroundColor(Color::srgb(0.4, 0.3, 0.3));
+                    }
+                }
+            },
+            Interaction::None => match button_type {
+                LevelSelectionButton::Back => *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                LevelSelectionButton::LevelButton(level_id) => {
+                    if level_data.is_level_unlocked(*level_id) {
+                        *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.6));
+                    } else {
+                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                    }
+                }
+            },
+        }
+    }
+}
+
 /// Setup pause menu when entering paused state
 fn setup_pause_menu_on_pause(pause_menu_state: Res<State<PauseMenuState>>, commands: Commands, asset_server: Res<AssetServer>) {
     match pause_menu_state.get() {
         PauseMenuState::PauseMenu => setup_pause_menu(commands),
         PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
+        PauseMenuState::LevelSelection => setup_level_selection_menu(commands, asset_server),
     }
 }
 
@@ -440,6 +706,7 @@ fn switch_pause_menu_content(
             match current_state {
                 PauseMenuState::PauseMenu => setup_pause_menu(commands),
                 PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
+                PauseMenuState::LevelSelection => setup_level_selection_menu(commands, asset_server),
             }
         }
     }

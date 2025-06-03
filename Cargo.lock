@@ -2638,6 +2638,7 @@ dependencies = [
  "bevy_enhanced_input",
  "log",
  "rand",
+ "serde",
  "tracing",
 ]
 

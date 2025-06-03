@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::GameState;
+use crate::levels::{LevelData, LevelStartEvent};
 
 /// Plugin for handling the main menu screen
 pub struct MenuPlugin;
@@ -339,12 +340,19 @@ fn handle_menu_input(
     mut next_game_state: ResMut<NextState<GameState>>,
     mut next_menu_state: ResMut<NextState<MenuState>>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut level_data: ResMut<LevelData>,
+    mut level_start_events: EventWriter<LevelStartEvent>,
 ) {
     // Handle main menu buttons
     for (interaction, mut color, button_type) in &mut main_button_query {
         match *interaction {
             Interaction::Pressed => match button_type {
-                MenuButton::Play => next_game_state.set(GameState::Playing),
+                MenuButton::Play => {
+                    // Set the current level to level 1 and emit start event
+                    level_data.set_current_level(1);
+                    level_start_events.write(LevelStartEvent { level_id: 1 });
+                    next_game_state.set(GameState::Playing);
+                }
                 MenuButton::Credits => next_menu_state.set(MenuState::Credits),
             },
             Interaction::Hovered => {
@@ -379,6 +387,9 @@ fn handle_menu_input(
 
     // Handle keyboard input
     if keyboard_input.just_pressed(KeyCode::Space) || keyboard_input.just_pressed(KeyCode::Enter) {
+        // Set the current level to level 1 and emit start event
+        level_data.set_current_level(1);
+        level_start_events.write(LevelStartEvent { level_id: 1 });
         next_game_state.set(GameState::Playing);
     }
 }

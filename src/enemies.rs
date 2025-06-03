@@ -247,8 +247,22 @@ fn spawn_dandelions(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
+    level_data: Option<Res<crate::levels::LevelData>>,
 ) {
-    spawn_timer.timer.tick(time.delta());
+    // Apply level-based spawn rate scaling
+    let spawn_rate_multiplier = if let Some(level_data) = &level_data {
+        if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+            current_level.enemy_scaling.spawn_rate_multiplier
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+
+    // Scale the timer based on spawn rate multiplier (higher multiplier = faster spawning)
+    let adjusted_delta = time.delta().mul_f32(spawn_rate_multiplier);
+    spawn_timer.timer.tick(adjusted_delta);
 
     if spawn_timer.timer.just_finished() {
         if let Ok(window) = windows.single() {
@@ -268,6 +282,18 @@ fn spawn_dandelions(
             let x = rng.gen_range(min_x..max_x);
             let y = rng.gen_range(min_y..max_y);
 
+            // Apply level-based health scaling
+            let base_health = 1;
+            let health = if let Some(level_data) = &level_data {
+                if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+                    (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
+                } else {
+                    base_health
+                }
+            } else {
+                base_health
+            };
+
             let size = DandelionSize::Tiny;
             commands.spawn((
                 Sprite {
@@ -276,7 +302,7 @@ fn spawn_dandelions(
                     ..default()
                 },
                 Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(size.scale())),
-                Dandelion { health: 1, size },
+                Dandelion { health, size },
                 EnemyEntity,
             ));
 
@@ -522,6 +548,7 @@ fn update_seed_orbs(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
+    level_data: Option<Res<crate::levels::LevelData>>,
 ) {
     for (entity, mut transform, mut orb) in orb_query.iter_mut() {
         orb.spawn_timer.tick(time.delta());
@@ -546,6 +573,19 @@ fn update_seed_orbs(
             if let Ok(mut ec) = commands.get_entity(entity) {
                 ec.despawn();
             }
+
+            // Apply level-based health scaling
+            let base_health = 1;
+            let health = if let Some(level_data) = &level_data {
+                if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+                    (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
+                } else {
+                    base_health
+                }
+            } else {
+                base_health
+            };
+
             let size = DandelionSize::Tiny;
             commands.spawn((
                 Sprite {
@@ -554,14 +594,17 @@ fn update_seed_orbs(
                     ..default()
                 },
                 Transform::from_translation(Vec3::new(orb.target_position.x, orb.target_position.y, 10.0)).with_scale(Vec3::splat(size.scale())),
-                Dandelion { health: 1, size },
+                Dandelion { health, size },
                 EnemyEntity,
             ));
 
             // Remove the seed orb and update dandelion count
             game_data.dandelion_count += 1;
             area_tracker.total_area += size.visual_area();
-            debug!("Seed orb spawned new dandelion at ({:.1}, {:.1})", orb.target_position.x, orb.target_position.y);
+            debug!(
+                "Seed orb spawned new dandelion at ({:.1}, {:.1}) with health {}",
+                orb.target_position.x, orb.target_position.y, health
+            );
         }
     }
 }
@@ -573,6 +616,7 @@ fn check_dandelion_merging(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
+    level_data: Option<Res<crate::levels::LevelData>>,
 ) {
     let mut to_merge: Vec<(Entity, Entity, Vec2, DandelionSize, DandelionSize)> = Vec::new();
     let mut entities_to_remove: HashSet<Entity> = HashSet::new();
@@ -640,6 +684,25 @@ fn check_dandelion_merging(
         spawn_merge_effect(&mut commands, merge_pos, new_size);
 
         // Create new merged dandelion
+        // Apply level-based health scaling to merged dandelions
+        let base_health = match new_size {
+            DandelionSize::Tiny => 1,
+            DandelionSize::Small => 2,
+            DandelionSize::Medium => 3,
+            DandelionSize::Large => 4,
+            DandelionSize::Huge => 5,
+        };
+
+        let health = if let Some(level_data) = &level_data {
+            if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+                (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
+            } else {
+                base_health
+            }
+        } else {
+            base_health
+        };
+
         let mut entity_commands = commands.spawn((
             Sprite {
                 image: asset_server.load(new_size.asset_path()),
@@ -647,7 +710,7 @@ fn check_dandelion_merging(
                 ..default()
             },
             Transform::from_translation(Vec3::new(merge_pos.x, merge_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
-            Dandelion { health: 1, size: new_size },
+            Dandelion { health, size: new_size },
             EnemyEntity,
         ));
 
@@ -839,9 +902,21 @@ fn spawn_variety_dandelions(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
+    level_data: Option<Res<crate::levels::LevelData>>,
 ) {
+    // Use level-based difficulty threshold instead of fixed threshold
+    let difficulty_threshold = if let Some(level_data) = &level_data {
+        if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+            current_level.enemy_scaling.difficulty_threshold
+        } else {
+            variety_timer.difficulty_threshold
+        }
+    } else {
+        variety_timer.difficulty_threshold
+    };
+
     // Check if we should enable variety spawning
-    if !variety_timer.enabled && game_data.score >= variety_timer.difficulty_threshold {
+    if !variety_timer.enabled && game_data.score >= difficulty_threshold {
         variety_timer.enabled = true;
         debug!("Variety spawning enabled at score {}", game_data.score);
     }
@@ -850,7 +925,20 @@ fn spawn_variety_dandelions(
         return;
     }
 
-    variety_timer.timer.tick(time.delta());
+    // Apply level-based spawn rate scaling
+    let spawn_rate_multiplier = if let Some(level_data) = &level_data {
+        if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+            current_level.enemy_scaling.spawn_rate_multiplier
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+
+    // Scale the timer based on spawn rate multiplier
+    let adjusted_delta = time.delta().mul_f32(spawn_rate_multiplier);
+    variety_timer.timer.tick(adjusted_delta);
 
     if variety_timer.timer.just_finished() {
         if let Ok(window) = windows.single() {
@@ -875,9 +963,30 @@ fn spawn_variety_dandelions(
                 DandelionSize::Huge,
             ];
 
+            // Apply level-based health scaling
+            let health_multiplier = if let Some(level_data) = &level_data {
+                if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+                    current_level.enemy_scaling.health_multiplier
+                } else {
+                    1.0
+                }
+            } else {
+                1.0
+            };
+
             for size in sizes {
                 let x = rng.gen_range(min_x..max_x);
                 let y = rng.gen_range(min_y..max_y);
+
+                // Calculate scaled health based on size and level
+                let base_health = match size {
+                    DandelionSize::Tiny => 1,
+                    DandelionSize::Small => 2,
+                    DandelionSize::Medium => 3,
+                    DandelionSize::Large => 4,
+                    DandelionSize::Huge => 5,
+                };
+                let health = (base_health as f32 * health_multiplier).ceil() as u32;
 
                 let mut entity_commands = commands.spawn((
                     Sprite {
@@ -886,7 +995,7 @@ fn spawn_variety_dandelions(
                         ..default()
                     },
                     Transform::from_translation(Vec3::new(x, y, 10.0)).with_scale(Vec3::splat(size.scale())),
-                    Dandelion { health: 1, size },
+                    Dandelion { health, size },
                     EnemyEntity,
                 ));
 
@@ -899,7 +1008,10 @@ fn spawn_variety_dandelions(
                 area_tracker.total_area += size.visual_area();
             }
 
-            debug!("Spawned variety pack of dandelions (difficulty mode)");
+            debug!(
+                "Spawned variety pack of dandelions (difficulty mode) with {}x health scaling",
+                health_multiplier
+            );
         }
     }
 }
