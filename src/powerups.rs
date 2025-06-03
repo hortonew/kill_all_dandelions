@@ -14,6 +14,7 @@ const POWERUP_CLICK_RADIUS: f32 = 30.0;
 const RABBIT_LIFETIME: f32 = 3.0;
 const RABBIT_SPEED: f32 = 120.0;
 const RABBIT_EAT_DISTANCE: f32 = 25.0;
+const RABBIT_SCALE: f32 = 0.2; // Scale 175px sprite to 35px
 const FIRE_RADIUS: f32 = 100.0;
 const FIRE_LIFETIME: f32 = 3.0;
 const SPAWN_MARGIN: f32 = 50.0;
@@ -41,6 +42,7 @@ impl Plugin for PowerupsPlugin {
                     update_powerup_effects,
                     handle_debug_keys,
                     update_rabbits,
+                    update_rabbit_sprites,
                     update_fire_system,
                     cleanup_expired_entities,
                     update_rabbit_sound_timers,
@@ -150,6 +152,7 @@ struct Rabbit {
     dandelions_eaten: u32,
     lifetime: Timer,
     speed: f32,
+    facing_right: bool, // Track movement direction for sprite flipping
 }
 
 impl Default for Rabbit {
@@ -159,6 +162,7 @@ impl Default for Rabbit {
             dandelions_eaten: 0,
             lifetime: Timer::from_seconds(RABBIT_LIFETIME, TimerMode::Once),
             speed: RABBIT_SPEED,
+            facing_right: false, // Default faces left (original sprite direction)
         }
     }
 }
@@ -270,7 +274,11 @@ fn spawn_powerup_with_effect(commands: &mut Commands, assets: &GameAssets, posit
             image: image_handle,
             ..default()
         },
-        Transform::from_translation(Vec3::new(position.x, position.y, 15.0)).with_scale(Vec3::splat(0.8)),
+        Transform::from_translation(Vec3::new(position.x, position.y, 15.0)).with_scale(Vec3::splat(if powerup_type == PowerupType::Bunny {
+            RABBIT_SCALE * 4.0
+        } else {
+            0.8
+        })),
         Powerup { powerup_type },
         PowerupEntity,
     ));
@@ -423,7 +431,7 @@ fn spawn_rabbits(commands: &mut Commands, assets: &GameAssets, position: Vec2) {
                 image: assets.bunny.clone(),
                 ..default()
             },
-            Transform::from_translation(Vec3::new(spawn_pos.x, spawn_pos.y, 12.0)).with_scale(Vec3::splat(0.6)),
+            Transform::from_translation(Vec3::new(spawn_pos.x, spawn_pos.y, 12.0)).with_scale(Vec3::splat(RABBIT_SCALE)),
             Rabbit::default(),
             PowerupEntity,
         ));
@@ -450,6 +458,13 @@ fn spawn_fire_ignition_with_generation(commands: &mut Commands, assets: &GameAss
         },
         PowerupEntity,
     ));
+}
+
+/// Component for tracking sprite animation state (future expansion)
+#[derive(Component)]
+struct RabbitSprite {
+    // Future: animation state, frame timer, etc.
+    // For now just used as a marker for rabbit sprites
 }
 
 /// Update rabbit behavior - target and move towards dandelions with team coordination
@@ -491,6 +506,13 @@ fn update_rabbits(
                 let rabbit_pos = rabbit_transform.translation.truncate();
                 let target_pos = target_transform.translation.truncate();
                 let direction = (target_pos - rabbit_pos).normalize_or_zero();
+
+                // Update facing direction based on movement
+                if direction.x > 0.1 {
+                    rabbit.facing_right = true;
+                } else if direction.x < -0.1 {
+                    rabbit.facing_right = false;
+                }
 
                 let movement = direction * rabbit.speed * time.delta_secs();
                 rabbit_transform.translation += movement.extend(0.0);
@@ -800,4 +822,13 @@ fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With
     }
 
     debug!("Powerups cleaned up");
+}
+
+/// Update rabbit sprite orientation based on movement direction
+fn update_rabbit_sprites(mut rabbit_query: Query<(&Rabbit, &mut Sprite), With<Rabbit>>) {
+    for (rabbit, mut sprite) in rabbit_query.iter_mut() {
+        // Flip sprite horizontally based on facing direction
+        // Original sprite faces left, so flip_x = true when facing right
+        sprite.flip_x = rabbit.facing_right;
+    }
 }
