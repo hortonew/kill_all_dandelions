@@ -32,11 +32,11 @@ impl Plugin for PlayingPlugin {
                 update_combo_timer,
                 update_slash_effects,
                 handle_level_completion_events,
-                handle_level_completion_interactions,
             )
                 .run_if(in_state(PauseState::Playing))
                 .run_if(in_state(GameState::Playing)),
         )
+        .add_systems(Update, handle_level_completion_interactions.run_if(in_state(GameState::Playing)))
         .add_systems(OnEnter(GameState::Playing), play_level1_music.after(setup_game_resources))
         .add_systems(OnExit(GameState::Playing), cleanup_game);
     }
@@ -886,12 +886,17 @@ fn handle_level_completion_events(
 
 /// Handle interactions with the level completion overlay
 fn handle_level_completion_interactions(
+    mut commands: Commands,
     mut interaction_query: Query<(&Interaction, &mut BackgroundColor, Option<&LevelCompleteContinueButton>), (Changed<Interaction>, With<Button>)>,
     mut game_data: ResMut<GameData>,
     mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut level_data: ResMut<LevelData>,
     mut level_start_events: EventWriter<LevelStartEvent>,
+    enemy_entities: Query<Entity, With<crate::enemies::EnemyEntity>>,
+    powerup_entities: Query<Entity, With<crate::powerups::PowerupEntity>>,
+    rabbit_entities: Query<Entity, With<crate::powerups::Rabbit>>,
+    fire_entities: Query<Entity, With<crate::powerups::FireIgnition>>,
 ) {
     for (interaction, mut color, continue_button) in &mut interaction_query {
         if continue_button.is_some() {
@@ -900,6 +905,32 @@ fn handle_level_completion_interactions(
                     // Hide level complete overlay
                     for mut visibility in &mut level_complete_overlay_query {
                         *visibility = Visibility::Hidden;
+                    }
+
+                    // Clear all enemies and powerups from the screen for next level
+                    for entity in &enemy_entities {
+                        if let Ok(mut ec) = commands.get_entity(entity) {
+                            ec.despawn();
+                        }
+                    }
+                    for entity in &powerup_entities {
+                        if let Ok(mut ec) = commands.get_entity(entity) {
+                            ec.despawn();
+                        }
+                    }
+
+                    // Clear all rabbits from the screen
+                    for entity in &rabbit_entities {
+                        if let Ok(mut ec) = commands.get_entity(entity) {
+                            ec.despawn();
+                        }
+                    }
+
+                    // Clear all fire entities from the screen
+                    for entity in &fire_entities {
+                        if let Ok(mut ec) = commands.get_entity(entity) {
+                            ec.despawn();
+                        }
                     }
 
                     // Reset game data for the next level

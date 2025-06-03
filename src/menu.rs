@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand::Rng;
 
 use crate::GameState;
 use crate::levels::{LevelData, LevelStartEvent};
@@ -102,7 +103,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 });
             // Subtitle
             parent.spawn((
-                Text::new("Tap fast, combo hard, maintain the perfect lawn!"),
+                Text::new(get_random_subtitle()),
                 TextFont { font_size: 16.0, ..default() },
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
                 Node {
@@ -406,4 +407,17 @@ fn cleanup_credits_menu(mut commands: Commands, credits_entities: Query<Entity, 
     for entity in &credits_entities {
         commands.entity(entity).despawn();
     }
+}
+
+/// Get a random subtitle for the main menu
+fn get_random_subtitle() -> &'static str {
+    const SUBTITLES: &[&str] = &[
+        "The \"Appease the HOA\" simulator!",
+        "Dandelion demolition derby!",
+        "Weeding out the competition!",
+        "Flower power? More like flower DESTROY!",
+    ];
+
+    let mut rng = rand::thread_rng();
+    SUBTITLES[rng.gen_range(0..SUBTITLES.len())]
 }

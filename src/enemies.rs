@@ -192,7 +192,7 @@ struct SeedOrb {
 
 /// Marker component for enemy entities
 #[derive(Component)]
-struct EnemyEntity;
+pub struct EnemyEntity;
 
 /// Component for merge effect
 #[derive(Component)]

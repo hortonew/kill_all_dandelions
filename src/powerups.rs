@@ -105,7 +105,7 @@ struct PowerupEffect {
 
 /// Marker component for powerup entities
 #[derive(Component)]
-struct PowerupEntity;
+pub struct PowerupEntity;
 
 /// Resource to track dandelion targeting to prevent rabbits from swarming the same target
 #[derive(Resource, Default)]
@@ -148,7 +148,7 @@ impl RabbitTargeting {
 
 /// Component for rabbit entities
 #[derive(Component)]
-struct Rabbit {
+pub struct Rabbit {
     target: Option<Entity>,
     dandelions_eaten: u32,
     lifetime: Timer,
@@ -170,7 +170,7 @@ impl Default for Rabbit {
 
 /// Component for fire ignition entities
 #[derive(Component)]
-struct FireIgnition {
+pub struct FireIgnition {
     radius: f32,
     damage_timer: Timer,
     lifetime: Timer,
