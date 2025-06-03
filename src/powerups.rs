@@ -213,7 +213,7 @@ struct PendingFire {
 
 impl FireManager {
     const MAX_GENERATION: u32 = 5; // Limit chain reaction depth
-    const BATCH_INTERVAL: f32 = 0.1; // Process fires every 100ms
+    const BATCH_INTERVAL: f32 = 0.05; // Process fires every 50ms for faster spreading
 
     fn new() -> Self {
         Self {
@@ -232,6 +232,7 @@ struct FirePreview;
 fn setup_powerup_resources(mut commands: Commands) {
     commands.insert_resource(PowerupSpawnTimer::default());
     commands.insert_resource(RabbitTargeting::default());
+    commands.insert_resource(FireManager::new());
 }
 
 /// Spawn powerups at random positions
@@ -677,7 +678,7 @@ fn update_fire_system(
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
 ) {
-    // Update fire manager timer
+    // Update fire manager timer (kept for potential future optimizations)
     fire_manager.batch_timer.tick(time.delta());
 
     // Clear and rebuild active fires list to prevent stale data accumulation
@@ -707,47 +708,45 @@ fn update_fire_system(
         }
     }
 
-    // Batch process fire damage when timer triggers
-    if fire_manager.batch_timer.just_finished() {
-        let mut dandelions_to_destroy = Vec::new();
+    // Process fire damage every frame for immediate spreading
+    let mut dandelions_to_destroy = Vec::new();
 
-        // Single pass through all dandelions, check against all fires
-        for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
-            let dandelion_pos = dandelion_transform.translation.truncate();
+    // Single pass through all dandelions, check against all fires
+    for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
+        let dandelion_pos = dandelion_transform.translation.truncate();
 
-            // Check if this dandelion is hit by any fire
-            for fire_data in &fire_manager.active_fires {
-                let distance = fire_data.position.distance(dandelion_pos);
-                if distance <= fire_data.radius {
-                    dandelions_to_destroy.push((dandelion_entity, dandelion_pos, dandelion.size, fire_data.generation));
-                    break; // One hit is enough
-                }
+        // Check if this dandelion is hit by any fire
+        for fire_data in &fire_manager.active_fires {
+            let distance = fire_data.position.distance(dandelion_pos);
+            if distance <= fire_data.radius {
+                dandelions_to_destroy.push((dandelion_entity, dandelion_pos, dandelion.size, fire_data.generation));
+                break; // One hit is enough
             }
         }
+    }
 
-        // Process destroyed dandelions and queue chain fires
-        for (dandelion_entity, dandelion_pos, dandelion_size, generation) in dandelions_to_destroy {
-            // Remove the dandelion
-            commands.entity(dandelion_entity).despawn();
+    // Process destroyed dandelions and queue chain fires
+    for (dandelion_entity, dandelion_pos, dandelion_size, generation) in dandelions_to_destroy {
+        // Remove the dandelion
+        commands.entity(dandelion_entity).despawn();
 
-            // Update tracking
-            area_tracker.total_area -= dandelion_size.visual_area();
-            game_data.add_dandelion_kill();
-            game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+        // Update tracking
+        area_tracker.total_area -= dandelion_size.visual_area();
+        game_data.add_dandelion_kill();
+        game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
 
-            // Queue chain fire if generation limit not exceeded
-            if generation < FireManager::MAX_GENERATION {
-                fire_manager.pending_fires.push(PendingFire {
-                    position: dandelion_pos,
-                    generation: generation + 1,
-                });
-            }
+        // Queue chain fire if generation limit not exceeded
+        if generation < FireManager::MAX_GENERATION {
+            fire_manager.pending_fires.push(PendingFire {
+                position: dandelion_pos,
+                generation: generation + 1,
+            });
         }
+    }
 
-        // Spawn pending chain fires and clear the queue to prevent accumulation
-        for pending_fire in fire_manager.pending_fires.drain(..) {
-            spawn_fire_ignition_with_generation(&mut commands, &assets, pending_fire.position, pending_fire.generation);
-        }
+    // Spawn pending chain fires immediately for instant spreading
+    for pending_fire in fire_manager.pending_fires.drain(..) {
+        spawn_fire_ignition_with_generation(&mut commands, &assets, pending_fire.position, pending_fire.generation);
     }
 }
 
