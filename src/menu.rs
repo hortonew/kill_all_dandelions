@@ -14,6 +14,7 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(MenuState::Credits), setup_credits_menu)
             .add_systems(OnExit(MenuState::Credits), cleanup_credits_menu)
             .add_systems(Update, handle_menu_input.run_if(in_state(GameState::Menu)))
+            .add_systems(Update, update_dynamic_font_sizes.run_if(in_state(GameState::Menu)))
             .add_systems(OnExit(GameState::Menu), cleanup_menu);
     }
 }
@@ -40,6 +41,24 @@ struct MenuEntity;
 enum MenuButton {
     Play,
     Credits,
+}
+
+/// Marker component for dynamic font scaling
+#[derive(Component)]
+struct DynamicFontSize {
+    base_size: f32,
+}
+
+/// Calculate responsive font size based on viewport dimensions
+fn calculate_font_size(base_size: f32, windows: &Query<&Window>) -> f32 {
+    if let Ok(window) = windows.single() {
+        let min_dimension = window.width().min(window.height());
+        // Scale font based on the smaller dimension for consistency across orientations
+        let scale_factor = (min_dimension / 800.0).clamp(0.6, 1.5);
+        (base_size * scale_factor).round()
+    } else {
+        base_size
+    }
 }
 
 /// Setup the menu camera
@@ -80,6 +99,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         Text::new("Kill All Dandelions"),
                         TextFont { font_size: 36.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                        DynamicFontSize { base_size: 36.0 },
                     ));
                 });
             parent
@@ -106,6 +126,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 Text::new(get_random_subtitle()),
                 TextFont { font_size: 16.0, ..default() },
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                DynamicFontSize { base_size: 16.0 },
                 Node {
                     margin: UiRect::all(Val::Vh(1.0)),
                     ..default()
@@ -129,7 +150,12 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     MenuEntity,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Start Game"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((
+                        Text::new("Start Game"),
+                        TextFont { font_size: 22.0, ..default() },
+                        TextColor(Color::WHITE),
+                        DynamicFontSize { base_size: 22.0 },
+                    ));
                 });
 
             // Credits button
@@ -149,7 +175,12 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     MenuEntity,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Credits"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((
+                        Text::new("Credits"),
+                        TextFont { font_size: 22.0, ..default() },
+                        TextColor(Color::WHITE),
+                        DynamicFontSize { base_size: 22.0 },
+                    ));
                 });
         });
 }
@@ -191,7 +222,12 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                     BorderRadius::all(Val::Px(10.0)),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Credits"), TextFont { font_size: 28.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((
+                        Text::new("Credits"),
+                        TextFont { font_size: 28.0, ..default() },
+                        TextColor(Color::WHITE),
+                        DynamicFontSize { base_size: 28.0 },
+                    ));
 
                     // Powerup table container
                     parent
@@ -242,12 +278,14 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                                 Text::new("Erik"),
                                                 TextFont { font_size: 18.0, ..default() },
                                                 TextColor(Color::srgb(0.9, 0.9, 0.5)),
+                                                DynamicFontSize { base_size: 18.0 },
                                             ));
 
                                             parent.spawn((
                                                 Text::new("Game developer, Sound designer (blog.erikhorton.com)"),
                                                 TextFont { font_size: 14.0, ..default() },
                                                 TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                                                DynamicFontSize { base_size: 14.0 },
                                             ));
                                         });
                                 });
@@ -291,12 +329,14 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                                 Text::new("Emi"),
                                                 TextFont { font_size: 18.0, ..default() },
                                                 TextColor(Color::srgb(0.9, 0.9, 0.5)),
+                                                DynamicFontSize { base_size: 18.0 },
                                             ));
 
                                             parent.spawn((
                                                 Text::new("Artist (www.emisketchbook.com)"),
                                                 TextFont { font_size: 14.0, ..default() },
                                                 TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                                                DynamicFontSize { base_size: 14.0 },
                                             ));
                                         });
                                 });
@@ -320,7 +360,12 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                             CreditsBackButton,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((Text::new("Back"), TextFont { font_size: 20.0, ..default() }, TextColor(Color::WHITE)));
+                            parent.spawn((
+                                Text::new("Back"),
+                                TextFont { font_size: 20.0, ..default() },
+                                TextColor(Color::WHITE),
+                                DynamicFontSize { base_size: 20.0 },
+                            ));
                         });
                 });
         });
@@ -340,58 +385,64 @@ fn handle_menu_input(
     mut credits_button_query: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<CreditsBackButton>)>,
     mut next_game_state: ResMut<NextState<GameState>>,
     mut next_menu_state: ResMut<NextState<MenuState>>,
+    current_menu_state: Res<State<MenuState>>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut level_data: ResMut<LevelData>,
     mut level_start_events: EventWriter<LevelStartEvent>,
 ) {
-    // Handle main menu buttons
-    for (interaction, mut color, button_type) in &mut main_button_query {
-        match *interaction {
-            Interaction::Pressed => match button_type {
-                MenuButton::Play => {
-                    // Set the current level to level 1 and emit start event
-                    level_data.set_current_level(1);
-                    level_start_events.write(LevelStartEvent { level_id: 1 });
-                    next_game_state.set(GameState::Playing);
+    match current_menu_state.get() {
+        MenuState::Main => {
+            // Handle main menu buttons only when in main menu state
+            for (interaction, mut color, button_type) in &mut main_button_query {
+                match *interaction {
+                    Interaction::Pressed => match button_type {
+                        MenuButton::Play => {
+                            // Set the current level to level 1 and emit start event
+                            level_data.set_current_level(1);
+                            level_start_events.write(LevelStartEvent { level_id: 1 });
+                            next_game_state.set(GameState::Playing);
+                        }
+                        MenuButton::Credits => next_menu_state.set(MenuState::Credits),
+                    },
+                    Interaction::Hovered => {
+                        *color = match button_type {
+                            MenuButton::Play => BackgroundColor(Color::srgb(0.4, 0.8, 0.4)),
+                            MenuButton::Credits => BackgroundColor(Color::srgb(0.5, 0.5, 0.7)),
+                        };
+                    }
+                    Interaction::None => {
+                        *color = match button_type {
+                            MenuButton::Play => BackgroundColor(Color::srgb(0.3, 0.7, 0.3)),
+                            MenuButton::Credits => BackgroundColor(Color::srgb(0.4, 0.4, 0.6)),
+                        };
+                    }
                 }
-                MenuButton::Credits => next_menu_state.set(MenuState::Credits),
-            },
-            Interaction::Hovered => {
-                *color = match button_type {
-                    MenuButton::Play => BackgroundColor(Color::srgb(0.4, 0.8, 0.4)),
-                    MenuButton::Credits => BackgroundColor(Color::srgb(0.5, 0.5, 0.7)),
-                };
             }
-            Interaction::None => {
-                *color = match button_type {
-                    MenuButton::Play => BackgroundColor(Color::srgb(0.3, 0.7, 0.3)),
-                    MenuButton::Credits => BackgroundColor(Color::srgb(0.4, 0.4, 0.6)),
-                };
+
+            // Handle keyboard input only in main menu
+            if keyboard_input.just_pressed(KeyCode::Space) || keyboard_input.just_pressed(KeyCode::Enter) {
+                // Set the current level to level 1 and emit start event
+                level_data.set_current_level(1);
+                level_start_events.write(LevelStartEvent { level_id: 1 });
+                next_game_state.set(GameState::Playing);
             }
         }
-    }
-
-    // Handle credits back button
-    for (interaction, mut color) in &mut credits_button_query {
-        match *interaction {
-            Interaction::Pressed => {
-                next_menu_state.set(MenuState::Main);
-            }
-            Interaction::Hovered => {
-                *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.4));
-            }
-            Interaction::None => {
-                *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+        MenuState::Credits => {
+            // Handle credits back button only when in credits state
+            for (interaction, mut color) in &mut credits_button_query {
+                match *interaction {
+                    Interaction::Pressed => {
+                        next_menu_state.set(MenuState::Main);
+                    }
+                    Interaction::Hovered => {
+                        *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.4));
+                    }
+                    Interaction::None => {
+                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                    }
+                }
             }
         }
-    }
-
-    // Handle keyboard input
-    if keyboard_input.just_pressed(KeyCode::Space) || keyboard_input.just_pressed(KeyCode::Enter) {
-        // Set the current level to level 1 and emit start event
-        level_data.set_current_level(1);
-        level_start_events.write(LevelStartEvent { level_id: 1 });
-        next_game_state.set(GameState::Playing);
     }
 }
 
@@ -420,4 +471,11 @@ fn get_random_subtitle() -> &'static str {
 
     let mut rng = rand::thread_rng();
     SUBTITLES[rng.gen_range(0..SUBTITLES.len())]
+}
+
+/// Update dynamic font sizes based on window dimensions
+fn update_dynamic_font_sizes(windows: Query<&Window>, mut text_query: Query<(&mut TextFont, &DynamicFontSize)>) {
+    for (mut text_font, dynamic_size) in &mut text_query {
+        text_font.font_size = calculate_font_size(dynamic_size.base_size, &windows);
+    }
 }

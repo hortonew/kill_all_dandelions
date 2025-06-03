@@ -33,6 +33,7 @@ impl Plugin for PlayingPlugin {
                 update_slash_effects,
                 handle_level_completion_events,
                 handle_level_start_events,
+                update_dynamic_font_sizes,
             )
                 .run_if(in_state(PauseState::Playing))
                 .run_if(in_state(GameState::Playing)),
@@ -162,6 +163,12 @@ struct SlashEffect {
     timer: Timer,
 }
 
+/// Marker component for dynamic font scaling
+#[derive(Component)]
+struct DynamicFontSize {
+    base_size: f32,
+}
+
 /// Initialize game resources
 fn setup_game_resources(mut commands: Commands, time: Res<Time>) {
     commands.insert_resource(GameData::new());
@@ -173,6 +180,18 @@ fn setup_game_resources(mut commands: Commands, time: Res<Time>) {
     commands.insert_resource(level_session);
 
     info!("Game started with fresh level session!");
+}
+
+/// Calculate responsive font size based on viewport dimensions
+fn calculate_font_size(base_size: f32, windows: &Query<&Window>) -> f32 {
+    if let Ok(window) = windows.single() {
+        let min_dimension = window.width().min(window.height());
+        // Scale font based on the smaller dimension for consistency across orientations
+        let scale_factor = (min_dimension / 800.0).clamp(0.6, 1.5);
+        (base_size * scale_factor).round()
+    } else {
+        base_size
+    }
 }
 
 /// Setup the game camera and background
@@ -222,6 +241,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 22.0, ..default() },
                         TextColor(Color::srgb(1.0, 1.0, 0.8)), // Light yellow color
                         CurrentLevelText,
+                        DynamicFontSize { base_size: 22.0 },
                     ));
                 });
 
@@ -245,6 +265,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 24.0, ..default() },
                         TextColor(Color::WHITE),
                         ScoreText,
+                        DynamicFontSize { base_size: 24.0 },
                     ));
 
                     // Combo display with timer bar
@@ -260,6 +281,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 TextFont { font_size: 20.0, ..default() },
                                 TextColor(Color::srgb(1.0, 0.8, 0.2)),
                                 ComboText,
+                                DynamicFontSize { base_size: 20.0 },
                             ));
 
                             // Combo timer bar
@@ -293,6 +315,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 20.0, ..default() },
                         TextColor(Color::srgb(0.3, 0.9, 0.3)),
                         CurbAppealText,
+                        DynamicFontSize { base_size: 20.0 },
                     ));
 
                     // Attack mode display
@@ -301,6 +324,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 18.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.7, 0.3)),
                         AttackModeText,
+                        DynamicFontSize { base_size: 18.0 },
                     ));
 
                     // Level progress display
@@ -309,6 +333,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextFont { font_size: 18.0, ..default() },
                         TextColor(Color::srgb(0.7, 0.9, 0.7)),
                         LevelProgressText,
+                        DynamicFontSize { base_size: 18.0 },
                     ));
                 });
 
@@ -354,6 +379,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 Text::new("Q: Pause  |  Tap buttons or dandelions!"),
                                 TextFont { font_size: 15.0, ..default() },
                                 TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                                DynamicFontSize { base_size: 15.0 },
                             ));
                         });
 
@@ -383,7 +409,12 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     GameEntity,
                                 ))
                                 .with_children(|parent| {
-                                    parent.spawn((Text::new("Pause"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                    parent.spawn((
+                                        Text::new("Pause"),
+                                        TextFont { font_size: 16.0, ..default() },
+                                        TextColor(Color::WHITE),
+                                        DynamicFontSize { base_size: 16.0 },
+                                    ));
                                 });
 
                             // Attack mode toggle button
@@ -403,7 +434,12 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     GameEntity,
                                 ))
                                 .with_children(|parent| {
-                                    parent.spawn((Text::new("Mode: Click"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                    parent.spawn((
+                                        Text::new("Mode: Click"),
+                                        TextFont { font_size: 16.0, ..default() },
+                                        TextColor(Color::WHITE),
+                                        DynamicFontSize { base_size: 16.0 },
+                                    ));
                                 });
 
                             // Music toggle button
@@ -423,7 +459,12 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     GameEntity,
                                 ))
                                 .with_children(|parent| {
-                                    parent.spawn((Text::new("♪ ON"), TextFont { font_size: 16.0, ..default() }, TextColor(Color::WHITE)));
+                                    parent.spawn((
+                                        Text::new("♪ ON"),
+                                        TextFont { font_size: 16.0, ..default() },
+                                        TextColor(Color::WHITE),
+                                        DynamicFontSize { base_size: 16.0 },
+                                    ));
                                 });
                         });
                 });
@@ -857,6 +898,13 @@ pub fn spawn_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec
     ));
 }
 
+/// Update dynamic font sizes based on window dimensions
+fn update_dynamic_font_sizes(windows: Query<&Window>, mut text_query: Query<(&mut TextFont, &DynamicFontSize)>) {
+    for (mut text_font, dynamic_size) in &mut text_query {
+        text_font.font_size = calculate_font_size(dynamic_size.base_size, &windows);
+    }
+}
+
 /// Cleanup game entities when exiting playing state
 fn cleanup_game(
     mut commands: Commands,
@@ -978,7 +1026,7 @@ fn handle_level_completion_events(
         // Update level complete text with completion info
         for mut text in &mut level_complete_text_query {
             text.0 = format!(
-                "Level {} Complete!\nScore: {}\nTime: {:.1}s\nStars: {}",
+                "Level {} Complete!\n\nScore: {}\nTime: {:.1}s\nStars: {}",
                 event.level_id,
                 event.final_score,
                 event.completion_time.as_secs_f32(),
@@ -999,13 +1047,17 @@ fn handle_level_completion_events(
 
                     parent.spawn((
                         Node {
-                            width: Val::Px(30.0),
-                            height: Val::Px(30.0),
-                            margin: UiRect::all(Val::Px(5.0)),
+                            width: Val::VMin(4.0),
+                            height: Val::VMin(4.0),
+                            max_width: Val::Px(30.0),
+                            max_height: Val::Px(30.0),
+                            min_width: Val::Px(20.0),
+                            min_height: Val::Px(20.0),
+                            margin: UiRect::all(Val::VMin(0.8)),
                             ..default()
                         },
                         BackgroundColor(star_color),
-                        BorderRadius::all(Val::Px(5.0)),
+                        BorderRadius::all(Val::VMin(0.8)),
                     ));
                 }
             });
@@ -1099,7 +1151,7 @@ fn handle_level_completion_interactions(
 }
 
 /// Setup the level completion overlay UI
-fn setup_level_complete_overlay(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_level_complete_overlay(mut commands: Commands, _asset_server: Res<AssetServer>) {
     commands
         .spawn((
             Node {
@@ -1119,66 +1171,81 @@ fn setup_level_complete_overlay(mut commands: Commands, asset_server: Res<AssetS
             GameEntity,
         ))
         .with_children(|parent| {
-            // Background panel
+            // Background panel - responsive sizing for mobile landscape
             parent
                 .spawn((
                     Node {
-                        width: Val::Percent(80.0),
-                        height: Val::Percent(70.0),
-                        padding: UiRect::all(Val::Px(30.0)),
+                        width: Val::Vw(85.0),
+                        max_width: Val::Px(600.0),
+                        height: Val::Vh(70.0),
+                        max_height: Val::Px(450.0),
+                        min_height: Val::Vh(50.0),
+                        padding: UiRect::all(Val::VMin(3.0)),
                         flex_direction: FlexDirection::Column,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.95)),
-                    BorderRadius::all(Val::Px(15.0)),
+                    BorderRadius::all(Val::VMin(2.0)),
                 ))
                 .with_children(|parent| {
-                    // Level complete text
+                    // Level complete text with responsive font scaling
                     parent.spawn((
                         Text::new("Level Complete!"),
-                        TextFont { font_size: 48.0, ..default() },
+                        TextFont { font_size: 36.0, ..default() }, // Smaller for mobile
                         TextColor(Color::WHITE),
                         LevelCompleteText,
+                        DynamicFontSize { base_size: 36.0 },
                         Node {
-                            margin: UiRect::bottom(Val::Px(20.0)),
+                            margin: UiRect::bottom(Val::Vh(2.0)),
                             ..default()
                         },
                     ));
 
-                    // Stars display
+                    // Stars display with responsive sizing
                     parent.spawn((
                         Node {
-                            width: Val::Px(200.0),
-                            height: Val::Px(50.0),
+                            width: Val::Vw(25.0),
+                            max_width: Val::Px(200.0),
+                            height: Val::Vh(8.0),
+                            max_height: Val::Px(50.0),
                             flex_direction: FlexDirection::Row,
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
-                            margin: UiRect::bottom(Val::Px(30.0)),
+                            margin: UiRect::bottom(Val::Vh(3.0)),
                             ..default()
                         },
                         LevelCompleteStars,
                     ));
 
-                    // Continue button
+                    // Continue button with responsive sizing
                     parent
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(60.0),
+                                width: Val::Vw(25.0),
+                                max_width: Val::Px(200.0),
+                                min_width: Val::Px(150.0),
+                                height: Val::Vh(8.0),
+                                max_height: Val::Px(60.0),
+                                min_height: Val::Px(45.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                margin: UiRect::top(Val::Px(20.0)),
+                                margin: UiRect::top(Val::Vh(2.0)),
                                 ..default()
                             },
                             BackgroundColor(Color::srgb(0.2, 0.7, 0.2)),
-                            BorderRadius::all(Val::Px(10.0)),
+                            BorderRadius::all(Val::VMin(1.5)),
                             LevelCompleteContinueButton,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((Text::new("Continue"), TextFont { font_size: 24.0, ..default() }, TextColor(Color::WHITE)));
+                            parent.spawn((
+                                Text::new("Continue"),
+                                TextFont { font_size: 20.0, ..default() }, // Responsive font size
+                                TextColor(Color::WHITE),
+                                DynamicFontSize { base_size: 20.0 },
+                            ));
                         });
                 });
         });
