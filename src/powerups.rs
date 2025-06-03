@@ -136,6 +136,11 @@ impl RabbitTargeting {
     fn clear_rabbit_targets(&mut self, rabbit: Entity) {
         self.targets.retain(|_, &mut targeting_rabbit| targeting_rabbit != rabbit);
     }
+
+    /// Clear all targets (used during cleanup to prevent memory leaks)
+    fn clear(&mut self) {
+        self.targets.clear();
+    }
 }
 
 /// Component for rabbit entities
@@ -651,8 +656,9 @@ fn update_fire_system(
     // Update fire manager timer
     fire_manager.batch_timer.tick(time.delta());
 
-    // Update individual fire visuals and lifetimes
+    // Clear and rebuild active fires list to prevent stale data accumulation
     fire_manager.active_fires.clear();
+
     for (fire_entity, mut fire_transform, mut fire, mut sprite) in fire_query.iter_mut() {
         fire.damage_timer.tick(time.delta());
         fire.lifetime.tick(time.delta());
@@ -714,7 +720,7 @@ fn update_fire_system(
             }
         }
 
-        // Spawn pending chain fires (batched)
+        // Spawn pending chain fires and clear the queue to prevent accumulation
         for pending_fire in fire_manager.pending_fires.drain(..) {
             spawn_fire_ignition_with_generation(&mut commands, &assets, pending_fire.position, pending_fire.generation);
         }
@@ -777,9 +783,15 @@ fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound
 }
 
 /// Cleanup powerup entities when exiting playing state
-fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With<PowerupEntity>>) {
+fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With<PowerupEntity>>, rabbit_targeting: Option<ResMut<RabbitTargeting>>) {
+    // Clear rabbit targeting HashMap before removing resource
+    if let Some(mut targeting) = rabbit_targeting {
+        targeting.clear();
+    }
+
     commands.remove_resource::<PowerupSpawnTimer>();
     commands.remove_resource::<RabbitTargeting>();
+    commands.remove_resource::<FireManager>();
 
     for entity in &powerup_entities {
         if let Ok(mut ec) = commands.get_entity(entity) {
