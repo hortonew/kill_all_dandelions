@@ -124,6 +124,10 @@ struct AttackModeText;
 #[derive(Component)]
 struct LevelProgressText;
 
+/// Component for current level display
+#[derive(Component)]
+struct CurrentLevelText;
+
 /// Component for level completion overlay
 #[derive(Component)]
 struct LevelCompleteOverlay;
@@ -198,6 +202,29 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             GameEntity,
         ))
         .with_children(|parent| {
+            // Very top section with current level display
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Vh(6.0), // Small height for level display
+                        padding: UiRect::all(Val::Vw(UI_PADDING)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)), // Darker background for distinction
+                ))
+                .with_children(|parent| {
+                    // Current level display
+                    parent.spawn((
+                        Text::new("Level 1"),
+                        TextFont { font_size: 22.0, ..default() },
+                        TextColor(Color::srgb(1.0, 1.0, 0.8)), // Light yellow color
+                        CurrentLevelText,
+                    ));
+                });
+
             // Top UI panel with score, combo, and curb appeal
             parent
                 .spawn((
@@ -538,6 +565,7 @@ fn update_score_display(
             Without<CurbAppealText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
 ) {
@@ -557,6 +585,7 @@ fn update_combo_display(
             Without<CurbAppealText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
 ) {
@@ -588,6 +617,7 @@ fn update_curb_appeal_display(
             Without<ComboText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
 ) {
@@ -608,6 +638,7 @@ fn update_attack_mode_display(
             Without<ComboText>,
             Without<CurbAppealText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
 ) {
@@ -629,6 +660,7 @@ fn update_level_progress_display(
             Without<ComboText>,
             Without<CurbAppealText>,
             Without<AttackModeText>,
+            Without<CurrentLevelText>,
         ),
     >,
 ) {
@@ -638,6 +670,30 @@ fn update_level_progress_display(
             **text = format!("Target: {} | Progress: {:.0}%", current_level.target_points, progress);
         } else {
             **text = format!("Progress: {:.0}%", (game_data.score as f32).min(100.0));
+        }
+    }
+}
+
+/// Update current level display
+fn update_current_level_display(
+    level_data: &crate::levels::LevelData,
+    mut level_query: Query<
+        &mut Text,
+        (
+            With<CurrentLevelText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
+        ),
+    >,
+) {
+    if let Ok(mut text) = level_query.single_mut() {
+        if let Some(current_level) = level_data.get_current_level() {
+            **text = format!("Level {} - {}", current_level.id, current_level.name);
+        } else {
+            **text = format!("Level {}", level_data.current_level);
         }
     }
 }
@@ -654,6 +710,7 @@ fn update_ui(
             Without<CurbAppealText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
     combo_query: Query<
@@ -664,6 +721,7 @@ fn update_ui(
             Without<CurbAppealText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
     combo_timer_bar_query: Query<&mut Node, With<ComboTimerBar>>,
@@ -675,6 +733,7 @@ fn update_ui(
             Without<ComboText>,
             Without<AttackModeText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
     mode_query: Query<
@@ -685,6 +744,7 @@ fn update_ui(
             Without<ComboText>,
             Without<CurbAppealText>,
             Without<LevelProgressText>,
+            Without<CurrentLevelText>,
         ),
     >,
     progress_query: Query<
@@ -695,6 +755,18 @@ fn update_ui(
             Without<ComboText>,
             Without<CurbAppealText>,
             Without<AttackModeText>,
+            Without<CurrentLevelText>,
+        ),
+    >,
+    level_query: Query<
+        &mut Text,
+        (
+            With<CurrentLevelText>,
+            Without<ScoreText>,
+            Without<ComboText>,
+            Without<CurbAppealText>,
+            Without<AttackModeText>,
+            Without<LevelProgressText>,
         ),
     >,
     dandelion_query: Query<&crate::enemies::Dandelion>,
@@ -705,6 +777,7 @@ fn update_ui(
     update_curb_appeal_display(dandelion_query, curb_appeal_query);
     update_attack_mode_display(&game_data, mode_query);
     update_level_progress_display(&game_data, &level_data, progress_query);
+    update_current_level_display(&level_data, level_query);
 }
 
 /// Update mobile button text to match current mode

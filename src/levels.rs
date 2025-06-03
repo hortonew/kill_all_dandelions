@@ -26,8 +26,7 @@ impl LevelData {
         vec![
             Level {
                 id: 1,
-                name: "Garden Beginnings".to_string(),
-                description: "Clear your first patch of dandelions".to_string(),
+                name: "Weed Rising".to_string(),
                 target_points: 500,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(60), // 1 minute
@@ -46,8 +45,7 @@ impl LevelData {
             },
             Level {
                 id: 2,
-                name: "Spreading Weeds".to_string(),
-                description: "The dandelions are growing faster".to_string(),
+                name: "Golden Seed".to_string(),
                 target_points: 800,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(90),
@@ -66,8 +64,7 @@ impl LevelData {
             },
             Level {
                 id: 3,
-                name: "Weed Warfare".to_string(),
-                description: "Tougher dandelions require more strategy".to_string(),
+                name: "Morning Spore".to_string(),
                 target_points: 1200,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(120),
@@ -86,8 +83,7 @@ impl LevelData {
             },
             Level {
                 id: 4,
-                name: "Dandelion Invasion".to_string(),
-                description: "They're everywhere! Time for heavy artillery".to_string(),
+                name: "Weedborn".to_string(),
                 target_points: 1800,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(150),
@@ -106,8 +102,7 @@ impl LevelData {
             },
             Level {
                 id: 5,
-                name: "Mega Weeds".to_string(),
-                description: "Giant dandelions with extraordinary resilience".to_string(),
+                name: "Weed of Ascension".to_string(),
                 target_points: 2500,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(180),
@@ -126,8 +121,7 @@ impl LevelData {
             },
             Level {
                 id: 6,
-                name: "Seed Storm".to_string(),
-                description: "Explosive dandelions scatter seeds everywhere".to_string(),
+                name: "Hero of HOAges".to_string(),
                 target_points: 3500,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(210),
@@ -146,8 +140,7 @@ impl LevelData {
             },
             Level {
                 id: 7,
-                name: "Dandelion Fortress".to_string(),
-                description: "Heavily armored weeds defend their territory".to_string(),
+                name: "The Weed of the Many".to_string(),
                 target_points: 5000,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(240),
@@ -166,8 +159,7 @@ impl LevelData {
             },
             Level {
                 id: 8,
-                name: "Weed Apocalypse".to_string(),
-                description: "The ultimate test of lawn care skills".to_string(),
+                name: "Dungeon Crawler Crabcrass".to_string(),
                 target_points: 7500,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(300),
@@ -186,8 +178,7 @@ impl LevelData {
             },
             Level {
                 id: 9,
-                name: "Master Gardener".to_string(),
-                description: "Prove your mastery over the ultimate lawn challenge".to_string(),
+                name: "Thatch of the Emerald Lawn".to_string(),
                 target_points: 10000,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(360),
@@ -206,8 +197,7 @@ impl LevelData {
             },
             Level {
                 id: 10,
-                name: "Legendary Lawn Lord".to_string(),
-                description: "The final battle for pristine grass supremacy".to_string(),
+                name: "Moworrow and Moworrow and Moworrow".to_string(),
                 target_points: 15000,
                 time_limits: TimeLimits {
                     three_star: Duration::from_secs(420),
@@ -222,6 +212,44 @@ impl LevelData {
                 unlock_requirements: UnlockRequirements {
                     required_level: 9,
                     required_stars: 18,
+                },
+            },
+            Level {
+                id: 11,
+                name: "Weed are Legion".to_string(),
+                target_points: 20000,
+                time_limits: TimeLimits {
+                    three_star: Duration::from_secs(480),
+                    two_star: Duration::from_secs(540),
+                    one_star: Duration::from_secs(960),
+                },
+                enemy_scaling: EnemyScaling {
+                    health_multiplier: 6.0,
+                    spawn_rate_multiplier: 3.0,
+                    difficulty_threshold: 1500,
+                },
+                unlock_requirements: UnlockRequirements {
+                    required_level: 10,
+                    required_stars: 20,
+                },
+            },
+            Level {
+                id: 12,
+                name: "This is How You Lose the Weed War".to_string(),
+                target_points: 30000,
+                time_limits: TimeLimits {
+                    three_star: Duration::from_secs(600),
+                    two_star: Duration::from_secs(720),
+                    one_star: Duration::from_secs(1200),
+                },
+                enemy_scaling: EnemyScaling {
+                    health_multiplier: 7.0,
+                    spawn_rate_multiplier: 3.5,
+                    difficulty_threshold: 2000,
+                },
+                unlock_requirements: UnlockRequirements {
+                    required_level: 11,
+                    required_stars: 25,
                 },
             },
         ]
@@ -319,7 +347,6 @@ impl LevelData {
 pub struct Level {
     pub id: u32,
     pub name: String,
-    pub description: String,
     pub target_points: u32,
     pub time_limits: TimeLimits,
     pub enemy_scaling: EnemyScaling,
