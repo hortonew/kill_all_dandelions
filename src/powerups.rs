@@ -9,12 +9,13 @@ use crate::pause_menu::PauseState;
 use crate::playing::GameData;
 
 // Constants for powerup behavior
-const POWERUP_SPAWN_INTERVAL: f32 = 15.0;
+const POWERUP_SPAWN_INTERVAL: f32 = 10.0;
 const POWERUP_CLICK_RADIUS: f32 = 30.0;
 const RABBIT_LIFETIME: f32 = 3.0;
 const RABBIT_SPEED: f32 = 120.0;
 const RABBIT_EAT_DISTANCE: f32 = 25.0;
 const RABBIT_SCALE: f32 = 0.2; // Scale 175px sprite to 35px
+const FLAMETHROWER_SCALE: f32 = 0.2; // Scale 175px sprite to 35px
 const FIRE_RADIUS: f32 = 100.0;
 const FIRE_LIFETIME: f32 = 3.0;
 const SPAWN_MARGIN: f32 = 50.0;
@@ -275,9 +276,9 @@ fn spawn_powerup_with_effect(commands: &mut Commands, assets: &GameAssets, posit
             ..default()
         },
         Transform::from_translation(Vec3::new(position.x, position.y, 15.0)).with_scale(Vec3::splat(if powerup_type == PowerupType::Bunny {
-            RABBIT_SCALE * 4.0
+            RABBIT_SCALE
         } else {
-            0.8
+            FLAMETHROWER_SCALE
         })),
         Powerup { powerup_type },
         PowerupEntity,
@@ -361,6 +362,7 @@ fn use_powerup(powerup_type: PowerupType, position: Vec2, commands: &mut Command
         }
         PowerupType::Flamethrower => {
             spawn_fire_ignition(commands, assets, position);
+            play_flamethrower_sound(commands, assets);
             debug!("Flamethrower powerup activated at ({:.1}, {:.1})", position.x, position.y);
         }
     }
@@ -451,7 +453,7 @@ fn spawn_fire_ignition_with_generation(commands: &mut Commands, assets: &GameAss
             color: Color::srgba(1.0, 0.4, 0.0, 0.9),
             ..default()
         },
-        Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(0.8)),
+        Transform::from_translation(Vec3::new(position.x, position.y, 12.0)).with_scale(Vec3::splat(FLAMETHROWER_SCALE)),
         FireIgnition {
             generation,
             ..Default::default()
@@ -695,7 +697,7 @@ fn update_fire_system(
         // Fire visual effects
         let lifetime_progress = fire.lifetime.elapsed_secs() / fire.lifetime.duration().as_secs_f32();
         let pulse = (time.elapsed_secs() * 12.0).sin() * 0.15 + 1.0;
-        fire_transform.scale = Vec3::splat(0.8 * pulse);
+        fire_transform.scale = Vec3::splat(FLAMETHROWER_SCALE * pulse);
         let alpha = (1.0 - lifetime_progress) * 0.95;
         sprite.color = Color::srgba(1.0, 0.4, 0.0, alpha);
 
@@ -787,6 +789,21 @@ fn play_rabbit_sound(commands: &mut Commands, game_assets: &GameAssets) {
         },
         RabbitSoundTimer {
             timer: Timer::from_seconds(0.4, TimerMode::Once),
+        },
+        crate::SoundEntity,
+    ));
+}
+
+/// Play flamethrower sound effect for limited duration
+fn play_flamethrower_sound(commands: &mut Commands, game_assets: &GameAssets) {
+    commands.spawn((
+        AudioPlayer(game_assets.flamethrower_sound.clone()),
+        PlaybackSettings {
+            mode: bevy::audio::PlaybackMode::Once,
+            ..default()
+        },
+        RabbitSoundTimer {
+            timer: Timer::from_seconds(0.6, TimerMode::Once),
         },
         crate::SoundEntity,
     ));
