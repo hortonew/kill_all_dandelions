@@ -1047,15 +1047,7 @@ fn setup_level_complete_overlay(mut commands: Commands, asset_server: Res<AssetS
                             LevelCompleteContinueButton,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("Continue"),
-                                TextFont {
-                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 24.0,
-                                    ..default()
-                                },
-                                TextColor(Color::WHITE),
-                            ));
+                            parent.spawn((Text::new("Continue"), TextFont { font_size: 24.0, ..default() }, TextColor(Color::WHITE)));
                         });
                 });
         });
