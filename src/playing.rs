@@ -1126,7 +1126,7 @@ fn handle_level_completion_interactions(
                     let current_level_id = level_data.current_level;
                     let next_level_id = current_level_id + 1;
 
-                    if next_level_id <= 10 && level_data.get_level(next_level_id).is_some() {
+                    if level_data.get_level(next_level_id).is_some() {
                         // Go to next level
                         level_data.set_current_level(next_level_id);
                         // Emit level start event for the new level

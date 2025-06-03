@@ -150,8 +150,8 @@ fn setup_pause_menu(mut commands: Commands) {
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("Game Paused"), 
-                        TextFont { font_size: 28.0, ..default() }, 
+                        Text::new("Game Paused"),
+                        TextFont { font_size: 28.0, ..default() },
                         TextColor(Color::WHITE),
                         DynamicFontSize { base_size: 28.0 },
                     ));
@@ -174,8 +174,8 @@ fn setup_pause_menu(mut commands: Commands) {
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Resume Game"), 
-                                TextFont { font_size: 18.0, ..default() }, 
+                                Text::new("Resume Game"),
+                                TextFont { font_size: 18.0, ..default() },
                                 TextColor(Color::WHITE),
                                 DynamicFontSize { base_size: 18.0 },
                             ));
@@ -199,8 +199,8 @@ fn setup_pause_menu(mut commands: Commands) {
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Restart Game"), 
-                                TextFont { font_size: 18.0, ..default() }, 
+                                Text::new("Restart Game"),
+                                TextFont { font_size: 18.0, ..default() },
                                 TextColor(Color::WHITE),
                                 DynamicFontSize { base_size: 18.0 },
                             ));
@@ -224,8 +224,8 @@ fn setup_pause_menu(mut commands: Commands) {
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Powerup Help"), 
-                                TextFont { font_size: 18.0, ..default() }, 
+                                Text::new("Powerup Help"),
+                                TextFont { font_size: 18.0, ..default() },
                                 TextColor(Color::WHITE),
                                 DynamicFontSize { base_size: 18.0 },
                             ));
@@ -249,8 +249,8 @@ fn setup_pause_menu(mut commands: Commands) {
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("Level Selection"), 
-                                TextFont { font_size: 18.0, ..default() }, 
+                                Text::new("Level Selection"),
+                                TextFont { font_size: 18.0, ..default() },
                                 TextColor(Color::WHITE),
                                 DynamicFontSize { base_size: 18.0 },
                             ));
@@ -353,7 +353,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                 .with_children(|parent| {
                     parent.spawn((
                         Text::new("Powerup Help"), 
-                        TextFont { font_size: 24.0, ..default() }, 
+                        TextFont { font_size: 24.0, ..default() },
                         TextColor(Color::WHITE),
                         DynamicFontSize { base_size: 24.0 },
                     ));
@@ -509,7 +509,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                         .with_children(|parent| {
                             parent.spawn((
                                 Text::new("Back"), 
-                                TextFont { font_size: 20.0, ..default() }, 
+                                TextFont { font_size: 20.0, ..default() },
                                 TextColor(Color::WHITE),
                                 DynamicFontSize { base_size: 20.0 },
                             ));
@@ -519,7 +519,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
 }
 
 /// Setup level selection menu UI
-fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetServer>) {
+fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>) {
     commands
         .spawn((
             Node {
@@ -539,10 +539,10 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                 .spawn((
                     Node {
                         width: Val::Vw(90.0),
-                        max_width: Val::Px(800.0),
+                        max_width: Val::Px(900.0),
                         min_width: Val::Px(300.0),
                         height: Val::Vh(85.0),
-                        max_height: Val::Px(600.0),
+                        max_height: Val::Px(700.0),
                         min_height: Val::Vh(60.0),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
@@ -557,10 +557,7 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                 .with_children(|parent| {
                     parent.spawn((
                         Text::new("Level Selection"),
-                        TextFont { 
-                            font_size: 28.0,
-                            ..default() 
-                        },
+                        TextFont { font_size: 28.0, ..default() },
                         TextColor(Color::WHITE),
                         DynamicFontSize { base_size: 28.0 },
                     ));
@@ -569,81 +566,133 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                     parent
                         .spawn((Node {
                             width: Val::Percent(100.0),
-                            height: Val::Percent(70.0),
+                            height: Val::Percent(75.0),
                             flex_direction: FlexDirection::Column,
-                            row_gap: Val::VMin(1.5),
+                            row_gap: Val::VMin(1.2),
                             overflow: Overflow::scroll_y(),
                             padding: UiRect::all(Val::VMin(1.0)),
                             ..default()
                         },))
                         .with_children(|parent| {
-                            // Create level cards in rows of 2
-                            for row in 0..5 {
+                            let total_levels = level_data.levels.len();
+                            let levels_per_row = 3; // Better for mobile landscape
+                            let total_rows = (total_levels + levels_per_row - 1) / levels_per_row;
+
+                            // Create level cards in rows of 3 for better mobile compatibility
+                            for row in 0..total_rows {
                                 parent
                                     .spawn((Node {
                                         width: Val::Percent(100.0),
                                         flex_direction: FlexDirection::Row,
                                         justify_content: JustifyContent::SpaceEvenly,
-                                        column_gap: Val::VMin(2.0),
+                                        column_gap: Val::VMin(1.0),
+                                        align_items: AlignItems::Center,
                                         ..default()
                                     },))
                                     .with_children(|parent| {
-                                        for col in 0..2 {
-                                            let level_id = row * 2 + col + 1;
-                                            if level_id <= 10 {
-                                                // Create level card inline with responsive sizing
+                                        for col in 0..levels_per_row {
+                                            let level_id = row * levels_per_row + col + 1;
+                                            if level_id <= total_levels {
+                                                let level = level_data.get_level(level_id as u32);
+                                                let is_unlocked = level_data.is_level_unlocked(level_id as u32);
+
+                                                // Create level card with responsive sizing
                                                 parent
                                                     .spawn((
                                                         Button,
                                                         Node {
-                                                            width: Val::Percent(45.0),
+                                                            width: Val::Percent(30.0),
                                                             height: Val::VMin(12.0),
-                                                            max_height: Val::Px(80.0),
-                                                            min_height: Val::Px(60.0),
+                                                            max_height: Val::Px(100.0),
+                                                            min_height: Val::Px(70.0),
                                                             flex_direction: FlexDirection::Column,
                                                             align_items: AlignItems::Center,
                                                             justify_content: JustifyContent::Center,
-                                                            padding: UiRect::all(Val::VMin(1.0)),
+                                                            padding: UiRect::all(Val::VMin(0.8)),
                                                             ..default()
                                                         },
-                                                        BackgroundColor(if level_id == 1 {
-                                                            Color::srgb(0.4, 0.4, 0.6) // Level 1 is always unlocked
+                                                        BackgroundColor(if is_unlocked {
+                                                            Color::srgb(0.4, 0.4, 0.6) // Unlocked
                                                         } else {
-                                                            Color::srgb(0.3, 0.3, 0.3) // Default locked color
+                                                            Color::srgb(0.3, 0.3, 0.3) // Locked
                                                         }),
                                                         BorderRadius::all(Val::VMin(1.0)),
-                                                        LevelSelectionButton::LevelButton(level_id),
+                                                        LevelSelectionButton::LevelButton(level_id as u32),
                                                         PauseMenuEntity,
                                                     ))
                                                     .with_children(|parent| {
-                                                        // Level number with responsive font
-                                                        parent.spawn((
-                                                            Text::new(format!("Level {}", level_id)),
-                                                            TextFont { font_size: 18.0, ..default() },
-                                                            TextColor(Color::WHITE),
-                                                            DynamicFontSize { base_size: 18.0 },
-                                                        ));
+                                                        // Level number/name with responsive font
+                                                        if let Some(level) = level {
+                                                            parent.spawn((
+                                                                Text::new(format!("{}", level_id)),
+                                                                TextFont { font_size: 16.0, ..default() },
+                                                                TextColor(if is_unlocked { Color::WHITE } else { Color::srgb(0.6, 0.6, 0.6) }),
+                                                                DynamicFontSize { base_size: 16.0 },
+                                                            ));
+
+                                                            // Level name (smart truncation)
+                                                            let display_name = if level.name.len() > 35 {
+                                                                format!("{}...", &level.name[..32])
+                                                            } else {
+                                                                level.name.clone()
+                                                            };
+
+                                                            parent.spawn((
+                                                                Text::new(display_name),
+                                                                TextFont { font_size: 9.0, ..default() },
+                                                                TextColor(if is_unlocked {
+                                                                    Color::srgb(0.9, 0.9, 0.9)
+                                                                } else {
+                                                                    Color::srgb(0.5, 0.5, 0.5)
+                                                                }),
+                                                                DynamicFontSize { base_size: 9.0 },
+                                                                Node {
+                                                                    margin: UiRect::top(Val::VMin(0.2)),
+                                                                    ..default()
+                                                                },
+                                                            ));
+                                                        } else {
+                                                            parent.spawn((
+                                                                Text::new(format!("{}", level_id)),
+                                                                TextFont { font_size: 16.0, ..default() },
+                                                                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                                                                DynamicFontSize { base_size: 16.0 },
+                                                            ));
+                                                        }
 
                                                         // Stars display with responsive spacing
-                                                        parent
-                                                            .spawn((Node {
-                                                                flex_direction: FlexDirection::Row,
-                                                                column_gap: Val::VMin(0.8),
-                                                                margin: UiRect::top(Val::VMin(0.5)),
-                                                                ..default()
-                                                            },))
-                                                            .with_children(|parent| {
-                                                                for star_index in 0..3 {
-                                                                    parent.spawn((
-                                                                        Text::new("*"),
-                                                                        TextFont { font_size: 14.0, ..default() },
-                                                                        TextColor(Color::srgb(0.8, 0.8, 0.2)),
-                                                                        StarDisplay { level_id, star_index },
-                                                                        DynamicFontSize { base_size: 14.0 },
-                                                                    ));
-                                                                }
-                                                            });
+                                                        if is_unlocked {
+                                                            parent
+                                                                .spawn((Node {
+                                                                    flex_direction: FlexDirection::Row,
+                                                                    column_gap: Val::VMin(0.5),
+                                                                    margin: UiRect::top(Val::VMin(0.3)),
+                                                                    justify_content: JustifyContent::Center,
+                                                                    ..default()
+                                                                },))
+                                                                .with_children(|parent| {
+                                                                    for star_index in 0..3 {
+                                                                        parent.spawn((
+                                                                            Text::new("★"),
+                                                                            TextFont { font_size: 10.0, ..default() },
+                                                                            TextColor(Color::srgb(0.8, 0.8, 0.2)),
+                                                                            StarDisplay {
+                                                                                level_id: level_id as u32,
+                                                                                star_index,
+                                                                            },
+                                                                            DynamicFontSize { base_size: 10.0 },
+                                                                        ));
+                                                                    }
+                                                                });
+                                                        }
                                                     });
+                                            } else {
+                                                // Empty placeholder to maintain grid structure
+                                                parent.spawn((Node {
+                                                    width: Val::Percent(30.0),
+                                                    height: Val::VMin(12.0),
+                                                    ..default()
+                                                },));
                                             }
                                         }
                                     });
@@ -684,10 +733,7 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
 }
 
 /// Update dynamic font sizes based on window dimensions
-fn update_dynamic_font_sizes(
-    windows: Query<&Window>,
-    mut text_query: Query<(&mut TextFont, &DynamicFontSize)>,
-) {
+fn update_dynamic_font_sizes(windows: Query<&Window>, mut text_query: Query<(&mut TextFont, &DynamicFontSize)>) {
     for (mut text_font, dynamic_size) in &mut text_query {
         text_font.font_size = calculate_font_size(dynamic_size.base_size, &windows);
     }
@@ -772,11 +818,11 @@ fn level_selection_interactions(
 }
 
 /// Setup pause menu when entering paused state
-fn setup_pause_menu_on_pause(pause_menu_state: Res<State<PauseMenuState>>, commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_pause_menu_on_pause(pause_menu_state: Res<State<PauseMenuState>>, commands: Commands, asset_server: Res<AssetServer>, level_data: Res<LevelData>) {
     match pause_menu_state.get() {
         PauseMenuState::PauseMenu => setup_pause_menu(commands),
         PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
-        PauseMenuState::LevelSelection => setup_level_selection_menu(commands, asset_server),
+        PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data),
     }
 }
 
@@ -785,6 +831,7 @@ fn switch_pause_menu_content(
     pause_menu_state: Res<State<PauseMenuState>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    level_data: Res<LevelData>,
     pause_entities: Query<Entity, With<PauseMenuEntity>>,
     mut local_previous_state: Local<Option<PauseMenuState>>,
 ) {
@@ -801,7 +848,7 @@ fn switch_pause_menu_content(
             match current_state {
                 PauseMenuState::PauseMenu => setup_pause_menu(commands),
                 PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
-                PauseMenuState::LevelSelection => setup_level_selection_menu(commands, asset_server),
+                PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data),
             }
         }
     }

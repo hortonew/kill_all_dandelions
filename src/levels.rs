@@ -12,10 +12,12 @@ pub struct LevelData {
 
 impl Default for LevelData {
     fn default() -> Self {
+        let levels = Self::create_default_levels();
+        let level_count = levels.len();
         Self {
             current_level: 1,
-            levels: Self::create_default_levels(),
-            level_progress: vec![LevelProgress::default(); 10], // 10 levels initially
+            levels,
+            level_progress: vec![LevelProgress::default(); level_count],
         }
     }
 }
