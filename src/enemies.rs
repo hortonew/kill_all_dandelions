@@ -26,6 +26,8 @@ impl Plugin for EnemiesPlugin {
                     update_moving_dandelions,
                     check_moving_dandelion_collisions,
                     update_upgrade_cooldowns,
+                    manage_health_bars,
+                    update_health_bar_positions,
                     debug_dandelion_count,
                 )
                     .run_if(in_state(GameState::Playing))
@@ -168,6 +170,17 @@ impl DandelionSize {
 
         base_area * size_multiplier
     }
+
+    /// Get base health before level scaling
+    pub fn base_health(&self) -> u32 {
+        match self {
+            DandelionSize::Tiny => 1,
+            DandelionSize::Small => 2,
+            DandelionSize::Medium => 3,
+            DandelionSize::Large => 4,
+            DandelionSize::Huge => 5,
+        }
+    }
 }
 
 /// Component for seed orbs that spawn new dandelions
@@ -222,6 +235,21 @@ impl Default for UpgradeCooldown {
         }
     }
 }
+
+/// Component for health bars attached to damaged dandelions
+#[derive(Component)]
+struct HealthBar {
+    dandelion_entity: Entity,
+    max_health: u32,
+}
+
+/// Marker component for health bar background
+#[derive(Component)]
+struct HealthBarBackground;
+
+/// Marker component for health bar fill
+#[derive(Component)]
+struct HealthBarFill;
 
 /// Setup the enemy spawn timer
 fn setup_enemy_timer(mut commands: Commands) {
@@ -1037,5 +1065,156 @@ pub fn spawn_dandelion_ring(commands: &mut Commands, assets: &GameAssets, positi
             Dandelion { health: 1, size },
             EnemyEntity,
         ));
+    }
+}
+
+/// Calculate the maximum health for a dandelion based on its size and current level scaling
+fn calculate_max_health(size: DandelionSize, level_data: Option<&crate::levels::LevelData>) -> u32 {
+    let base_health = size.base_health();
+
+    if let Some(level_data) = level_data {
+        if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+            (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
+        } else {
+            base_health
+        }
+    } else {
+        base_health
+    }
+}
+
+/// Get health bar color based on health percentage
+fn get_health_bar_color(health_percentage: f32) -> Color {
+    if health_percentage >= 0.75 {
+        Color::srgb(0.0, 0.8, 0.0) // Green
+    } else if health_percentage >= 0.25 {
+        Color::srgb(1.0, 0.6, 0.0) // Orange
+    } else {
+        Color::srgb(0.9, 0.1, 0.1) // Red
+    }
+}
+
+/// Spawn a health bar for a damaged dandelion
+fn spawn_health_bar(commands: &mut Commands, dandelion_entity: Entity, dandelion_transform: &Transform, dandelion: &Dandelion, max_health: u32) {
+    let health_percentage = dandelion.health as f32 / max_health as f32;
+    let bar_color = get_health_bar_color(health_percentage);
+
+    // Health bar dimensions
+    let bar_width = 20.0;
+    let bar_height = 3.0;
+    let bar_offset_y = dandelion.size.collision_radius() + 8.0;
+
+    // Position above the dandelion
+    let bar_position = dandelion_transform.translation.truncate() + Vec2::new(0.0, bar_offset_y);
+
+    // Create the health bar entity with children
+    commands
+        .spawn((
+            HealthBar { dandelion_entity, max_health },
+            Transform::from_translation(Vec3::new(bar_position.x, bar_position.y, 15.0)),
+            EnemyEntity,
+        ))
+        .with_children(|parent| {
+            // Background (dark gray)
+            parent.spawn((
+                Sprite {
+                    color: Color::srgb(0.2, 0.2, 0.2),
+                    custom_size: Some(Vec2::new(bar_width, bar_height)),
+                    ..default()
+                },
+                Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+                HealthBarBackground,
+                EnemyEntity,
+            ));
+
+            // Foreground (colored health fill)
+            let fill_width = bar_width * health_percentage;
+            parent.spawn((
+                Sprite {
+                    color: bar_color,
+                    custom_size: Some(Vec2::new(fill_width, bar_height)),
+                    ..default()
+                },
+                Transform::from_translation(Vec3::new(-(bar_width - fill_width) / 2.0, 0.0, 1.0)),
+                HealthBarFill,
+                EnemyEntity,
+            ));
+        });
+}
+
+/// System to manage health bars for damaged dandelions
+fn manage_health_bars(
+    mut commands: Commands,
+    dandelion_query: Query<(Entity, &Transform, &Dandelion), With<Dandelion>>,
+    health_bar_query: Query<(Entity, &HealthBar), With<HealthBar>>,
+    level_data: Option<Res<crate::levels::LevelData>>,
+) {
+    // Create a map of existing health bars
+    let mut existing_health_bars: std::collections::HashMap<Entity, Entity> = std::collections::HashMap::new();
+    for (health_bar_entity, health_bar) in health_bar_query.iter() {
+        existing_health_bars.insert(health_bar.dandelion_entity, health_bar_entity);
+    }
+
+    for (dandelion_entity, dandelion_transform, dandelion) in dandelion_query.iter() {
+        let max_health = calculate_max_health(dandelion.size, level_data.as_deref());
+        let health_percentage = dandelion.health as f32 / max_health as f32;
+
+        // Check if dandelion is damaged (less than 100% health)
+        if health_percentage < 1.0 {
+            // If no health bar exists, create one
+            if !existing_health_bars.contains_key(&dandelion_entity) {
+                println!("Creating health bar for damaged dandelion: {:.1}% health", health_percentage * 100.0);
+                spawn_health_bar(&mut commands, dandelion_entity, dandelion_transform, dandelion, max_health);
+            }
+        } else {
+            // If dandelion is at full health, remove health bar
+            if let Some(health_bar_entity) = existing_health_bars.get(&dandelion_entity) {
+                if let Ok(mut entity_commands) = commands.get_entity(*health_bar_entity) {
+                    entity_commands.despawn();
+                }
+            }
+        }
+    }
+
+    // Remove health bars for dandelions that no longer exist
+    for (health_bar_entity, health_bar) in health_bar_query.iter() {
+        if dandelion_query.get(health_bar.dandelion_entity).is_err() {
+            // Dandelion no longer exists, remove health bar
+            if let Ok(mut entity_commands) = commands.get_entity(health_bar_entity) {
+                entity_commands.despawn();
+            }
+        }
+    }
+}
+
+/// System to update health bar positions to follow dandelions
+fn update_health_bar_positions(
+    dandelion_query: Query<(Entity, &Transform, &Dandelion), (With<Dandelion>, Without<HealthBar>)>,
+    mut health_bar_query: Query<(Entity, &HealthBar, &mut Transform, &Children), With<HealthBar>>,
+    mut fill_query: Query<(&mut Transform, &mut Sprite), (With<HealthBarFill>, Without<HealthBar>, Without<Dandelion>)>,
+) {
+    for (_health_bar_entity, health_bar, mut health_bar_transform, children) in health_bar_query.iter_mut() {
+        if let Ok((_, dandelion_transform, dandelion)) = dandelion_query.get(health_bar.dandelion_entity) {
+            let health_percentage = dandelion.health as f32 / health_bar.max_health as f32;
+            let bar_color = get_health_bar_color(health_percentage);
+            let bar_offset_y = dandelion.size.collision_radius() + 8.0;
+            let bar_position = dandelion_transform.translation.truncate() + Vec2::new(0.0, bar_offset_y);
+
+            // Update health bar parent position
+            health_bar_transform.translation = Vec3::new(bar_position.x, bar_position.y, 15.0);
+
+            let bar_width = 20.0;
+            let bar_height = 3.0;
+            let fill_width = bar_width * health_percentage;
+
+            // Update fill child position and size
+            for child in children.iter() {
+                if let Ok((mut fill_transform, mut fill_sprite)) = fill_query.get_mut(child) {
+                    fill_transform.translation.x = -(bar_width - fill_width) / 2.0;
+                    fill_sprite.custom_size = Some(Vec2::new(fill_width, bar_height));
+                    fill_sprite.color = bar_color;
+                }
+            }
+        }
     }
 }
