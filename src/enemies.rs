@@ -113,14 +113,15 @@ impl DandelionSize {
         }
     }
 
-    /// Get scale factor for rendering
+    /// Get scale factor for rendering with relative sizing
     pub fn scale(&self) -> f32 {
+        // Scale 175x175 images with relative sizing (tiny = 35x35 base)
         match self {
-            DandelionSize::Tiny => 1.0,
-            DandelionSize::Small => 1.3,
-            DandelionSize::Medium => 1.6,
-            DandelionSize::Large => 2.0,
-            DandelionSize::Huge => 2.5,
+            DandelionSize::Tiny => 0.2,    // 35x35
+            DandelionSize::Small => 0.26,  // 45.5x45.5
+            DandelionSize::Medium => 0.32, // 56x56
+            DandelionSize::Large => 0.4,   // 70x70
+            DandelionSize::Huge => 0.5,    // 87.5x87.5
         }
     }
 

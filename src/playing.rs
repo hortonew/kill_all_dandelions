@@ -276,8 +276,8 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                             parent.spawn((
                                 ImageNode::new(asset_server.load("dandelion_tiny.png")),
                                 Node {
-                                    width: Val::Px(16.0),
-                                    height: Val::Px(16.0),
+                                    width: Val::Px(35.0),
+                                    height: Val::Px(35.0),
                                     ..default()
                                 },
                             ));

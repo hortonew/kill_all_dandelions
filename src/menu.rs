@@ -68,26 +68,37 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn((Node {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
                     margin: UiRect::all(Val::Vh(2.0)),
                     column_gap: Val::Vw(2.0),
                     ..default()
                 },))
                 .with_children(|parent| {
                     parent.spawn((
-                        ImageNode::new(asset_server.load("dandelion_tiny.png")),
-                        Node {
-                            width: Val::Vw(6.0),
-                            height: Val::Vw(6.0),
-                            ..default()
-                        },
-                    ));
-                    parent.spawn((
                         Text::new("Kill All Dandelions"),
                         TextFont { font_size: 36.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.9, 0.9)),
                     ));
                 });
-
+            parent
+                .spawn((Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    margin: UiRect::all(Val::Vh(2.0)),
+                    column_gap: Val::Vw(2.0),
+                    ..default()
+                },))
+                .with_children(|parent| {
+                    parent.spawn((
+                        ImageNode::new(asset_server.load("dandelion_small.png")),
+                        Node {
+                            width: Val::Px(75.0),
+                            height: Val::Px(75.0),
+                            ..default()
+                        },
+                    ));
+                });
             // Subtitle
             parent.spawn((
                 Text::new("Tap fast, combo hard, maintain the perfect lawn!"),
@@ -208,8 +219,8 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     parent.spawn((
                                         ImageNode::new(asset_server.load("erik.png")),
                                         Node {
-                                            width: Val::Vw(8.0),
-                                            height: Val::Vw(8.0),
+                                            width: Val::Vw(10.0),
+                                            height: Val::Vw(10.0),
                                             max_width: Val::Px(60.0),
                                             max_height: Val::Px(60.0),
                                             ..default()
@@ -255,10 +266,10 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ))
                                 .with_children(|parent| {
                                     parent.spawn((
-                                        ImageNode::new(asset_server.load("bunny.png")),
+                                        ImageNode::new(asset_server.load("emi.png")),
                                         Node {
-                                            width: Val::Vw(8.0),
-                                            height: Val::Vw(8.0),
+                                            width: Val::Vw(10.0),
+                                            height: Val::Vw(10.0),
                                             max_width: Val::Px(60.0),
                                             max_height: Val::Px(60.0),
                                             ..default()
