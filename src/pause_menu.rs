@@ -93,27 +93,30 @@ fn setup_pause_menu(mut commands: Commands) {
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(300.0),
-                        height: Val::Px(300.0),
+                        width: Val::Vw(60.0),
+                        max_width: Val::Px(400.0),
+                        height: Val::Vh(60.0),
+                        max_height: Val::Px(350.0),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::Center,
-                        padding: UiRect::all(Val::Px(20.0)),
-                        row_gap: Val::Px(20.0),
+                        padding: UiRect::all(Val::Vh(3.0)),
+                        row_gap: Val::Vh(3.0),
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
                     BorderRadius::all(Val::Px(10.0)),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Game Paused"), TextFont { font_size: 32.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((Text::new("Game Paused"), TextFont { font_size: 28.0, ..default() }, TextColor(Color::WHITE)));
 
                     parent
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(50.0),
+                                width: Val::Vw(40.0),
+                                max_width: Val::Px(250.0),
+                                height: Val::Vh(7.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -124,15 +127,16 @@ fn setup_pause_menu(mut commands: Commands) {
                             PauseMenuEntity,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((Text::new("Resume Game"), TextFont { font_size: 20.0, ..default() }, TextColor(Color::WHITE)));
+                            parent.spawn((Text::new("Resume Game"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::WHITE)));
                         });
 
                     parent
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(50.0),
+                                width: Val::Vw(40.0),
+                                max_width: Val::Px(250.0),
+                                height: Val::Vh(7.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -143,15 +147,16 @@ fn setup_pause_menu(mut commands: Commands) {
                             PauseMenuEntity,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((Text::new("Restart Game"), TextFont { font_size: 20.0, ..default() }, TextColor(Color::WHITE)));
+                            parent.spawn((Text::new("Restart Game"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::WHITE)));
                         });
 
                     parent
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(50.0),
+                                width: Val::Vw(40.0),
+                                max_width: Val::Px(250.0),
+                                height: Val::Vh(7.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -162,7 +167,7 @@ fn setup_pause_menu(mut commands: Commands) {
                             PauseMenuEntity,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((Text::new("Powerup Help"), TextFont { font_size: 20.0, ..default() }, TextColor(Color::WHITE)));
+                            parent.spawn((Text::new("Powerup Help"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::WHITE)));
                         });
                 });
         });
@@ -227,6 +232,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                 height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
+                padding: UiRect::all(Val::Vw(2.0)),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
@@ -236,27 +242,30 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(600.0),
-                        height: Val::Px(500.0),
+                        width: Val::Vw(85.0),
+                        max_width: Val::Px(700.0),
+                        height: Val::Vh(80.0),
+                        max_height: Val::Px(600.0),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::FlexStart,
-                        padding: UiRect::all(Val::Px(20.0)),
-                        row_gap: Val::Px(20.0),
+                        padding: UiRect::all(Val::Vh(2.0)),
+                        row_gap: Val::Vh(2.0),
+                        overflow: Overflow::scroll_y(),
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
                     BorderRadius::all(Val::Px(10.0)),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Powerup Help"), TextFont { font_size: 28.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((Text::new("Powerup Help"), TextFont { font_size: 24.0, ..default() }, TextColor(Color::WHITE)));
 
                     // Powerup table container
                     parent
                         .spawn((Node {
                             width: Val::Percent(100.0),
                             flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(15.0),
+                            row_gap: Val::Vh(1.5),
                             ..default()
                         },))                        .with_children(|parent| {
                             // Bunny powerup row
@@ -264,11 +273,11 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                 .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Px(80.0),
+                                        min_height: Val::Vh(10.0),
                                         flex_direction: FlexDirection::Row,
                                         align_items: AlignItems::Center,
-                                        column_gap: Val::Px(20.0),
-                                        padding: UiRect::all(Val::Px(10.0)),
+                                        column_gap: Val::Vw(3.0),
+                                        padding: UiRect::all(Val::Vh(1.5)),
                                         ..default()
                                     },
                                     BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
@@ -279,8 +288,10 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                     parent.spawn((
                                         ImageNode::new(asset_server.load("bunny.png")),
                                         Node {
-                                            width: Val::Px(60.0),
-                                            height: Val::Px(60.0),
+                                            width: Val::Vw(8.0),
+                                            height: Val::Vw(8.0),
+                                            max_width: Val::Px(60.0),
+                                            max_height: Val::Px(60.0),
                                             ..default()
                                         },
                                     ));
@@ -291,7 +302,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                             Node {
                                                 flex_direction: FlexDirection::Column,
                                                 flex_grow: 1.0,
-                                                row_gap: Val::Px(5.0),
+                                                row_gap: Val::Vh(0.5),
                                                 ..default()
                                             },
                                         ))
@@ -299,7 +310,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                             parent.spawn((
                                                 Text::new("Bunny"),
                                                 TextFont {
-                                                    font_size: 18.0,
+                                                    font_size: 16.0,
                                                     ..default()
                                                 },
                                                 TextColor(Color::srgb(0.9, 0.9, 0.5)),
@@ -320,11 +331,11 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                 .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Px(80.0),
+                                        min_height: Val::Vh(10.0),
                                         flex_direction: FlexDirection::Row,
                                         align_items: AlignItems::Center,
-                                        column_gap: Val::Px(20.0),
-                                        padding: UiRect::all(Val::Px(10.0)),
+                                        column_gap: Val::Vw(3.0),
+                                        padding: UiRect::all(Val::Vh(1.5)),
                                         ..default()
                                     },
                                     BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
@@ -335,8 +346,10 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                     parent.spawn((
                                         ImageNode::new(asset_server.load("flamethrower.png")),
                                         Node {
-                                            width: Val::Px(60.0),
-                                            height: Val::Px(60.0),
+                                            width: Val::Vw(8.0),
+                                            height: Val::Vw(8.0),
+                                            max_width: Val::Px(60.0),
+                                            max_height: Val::Px(60.0),
                                             ..default()
                                         },
                                     ));
@@ -347,7 +360,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                                             Node {
                                                 flex_direction: FlexDirection::Column,
                                                 flex_grow: 1.0,
-                                                row_gap: Val::Px(5.0),
+                                                row_gap: Val::Vh(0.5),
                                                 ..default()
                                             },
                                         ))
@@ -378,11 +391,12 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(50.0),
+                                width: Val::Vw(30.0),
+                                max_width: Val::Px(200.0),
+                                height: Val::Vh(7.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                margin: UiRect::top(Val::Px(20.0)),
+                                margin: UiRect::top(Val::Vh(2.5)),
                                 ..default()
                             },
                             BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),

@@ -56,6 +56,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Vw(2.0)),
                 ..default()
             },
             BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
@@ -67,22 +68,22 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn((Node {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
-                    margin: UiRect::all(Val::Px(20.0)),
-                    column_gap: Val::Px(15.0),
+                    margin: UiRect::all(Val::Vh(2.0)),
+                    column_gap: Val::Vw(2.0),
                     ..default()
                 },))
                 .with_children(|parent| {
                     parent.spawn((
                         ImageNode::new(asset_server.load("dandelion_tiny.png")),
                         Node {
-                            width: Val::Px(48.0),
-                            height: Val::Px(48.0),
+                            width: Val::Vw(6.0),
+                            height: Val::Vw(6.0),
                             ..default()
                         },
                     ));
                     parent.spawn((
                         Text::new("Kill All Dandelions"),
-                        TextFont { font_size: 48.0, ..default() },
+                        TextFont { font_size: 36.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.9, 0.9)),
                     ));
                 });
@@ -90,10 +91,10 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             // Subtitle
             parent.spawn((
                 Text::new("Tap fast, combo hard, maintain the perfect lawn!"),
-                TextFont { font_size: 18.0, ..default() },
+                TextFont { font_size: 16.0, ..default() },
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
                 Node {
-                    margin: UiRect::all(Val::Px(10.0)),
+                    margin: UiRect::all(Val::Vh(1.0)),
                     ..default()
                 },
             ));
@@ -103,9 +104,9 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn((
                     Button,
                     Node {
-                        width: Val::Px(200.0),
-                        height: Val::Px(60.0),
-                        margin: UiRect::all(Val::Px(20.0)),
+                        width: Val::Vw(35.0),
+                        height: Val::Vh(8.0),
+                        margin: UiRect::all(Val::Vh(2.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -115,7 +116,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     MenuEntity,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Start Game"), TextFont { font_size: 24.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((Text::new("Start Game"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
                 });
 
             // Credits button
@@ -123,9 +124,9 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn((
                     Button,
                     Node {
-                        width: Val::Px(200.0),
-                        height: Val::Px(60.0),
-                        margin: UiRect::all(Val::Px(10.0)),
+                        width: Val::Vw(35.0),
+                        height: Val::Vh(8.0),
+                        margin: UiRect::all(Val::Vh(1.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -135,7 +136,7 @@ fn setup_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     MenuEntity,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::new("Credits"), TextFont { font_size: 24.0, ..default() }, TextColor(Color::WHITE)));
+                    parent.spawn((Text::new("Credits"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
                 });
         });
 }
@@ -162,13 +163,15 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(600.0),
-                        height: Val::Px(500.0),
+                        width: Val::Vw(80.0),
+                        max_width: Val::Px(600.0),
+                        height: Val::Vh(70.0),
+                        max_height: Val::Px(500.0),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::FlexStart,
-                        padding: UiRect::all(Val::Px(20.0)),
-                        row_gap: Val::Px(20.0),
+                        padding: UiRect::all(Val::Vh(2.5)),
+                        row_gap: Val::Vh(2.5),
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
@@ -182,7 +185,7 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         .spawn((Node {
                             width: Val::Percent(100.0),
                             flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(15.0),
+                            row_gap: Val::Vh(2.0),
                             ..default()
                         },))
                         .with_children(|parent| {
@@ -191,11 +194,11 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Px(80.0),
+                                        min_height: Val::Vh(10.0),
                                         flex_direction: FlexDirection::Row,
                                         align_items: AlignItems::Center,
-                                        column_gap: Val::Px(20.0),
-                                        padding: UiRect::all(Val::Px(10.0)),
+                                        column_gap: Val::Vw(3.0),
+                                        padding: UiRect::all(Val::Vh(1.5)),
                                         ..default()
                                     },
                                     BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
@@ -205,8 +208,10 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     parent.spawn((
                                         ImageNode::new(asset_server.load("erik.png")),
                                         Node {
-                                            width: Val::Px(60.0),
-                                            height: Val::Px(60.0),
+                                            width: Val::Vw(8.0),
+                                            height: Val::Vw(8.0),
+                                            max_width: Val::Px(60.0),
+                                            max_height: Val::Px(60.0),
                                             ..default()
                                         },
                                     ));
@@ -216,7 +221,7 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                         .spawn((Node {
                                             flex_direction: FlexDirection::Column,
                                             flex_grow: 1.0,
-                                            row_gap: Val::Px(5.0),
+                                            row_gap: Val::Vh(0.5),
                                             ..default()
                                         },))
                                         .with_children(|parent| {
@@ -238,11 +243,11 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Px(80.0),
+                                        min_height: Val::Vh(10.0),
                                         flex_direction: FlexDirection::Row,
                                         align_items: AlignItems::Center,
-                                        column_gap: Val::Px(20.0),
-                                        padding: UiRect::all(Val::Px(10.0)),
+                                        column_gap: Val::Vw(3.0),
+                                        padding: UiRect::all(Val::Vh(1.5)),
                                         ..default()
                                     },
                                     BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
@@ -252,8 +257,10 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     parent.spawn((
                                         ImageNode::new(asset_server.load("bunny.png")),
                                         Node {
-                                            width: Val::Px(60.0),
-                                            height: Val::Px(60.0),
+                                            width: Val::Vw(8.0),
+                                            height: Val::Vw(8.0),
+                                            max_width: Val::Px(60.0),
+                                            max_height: Val::Px(60.0),
                                             ..default()
                                         },
                                     ));
@@ -263,7 +270,7 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                         .spawn((Node {
                                             flex_direction: FlexDirection::Column,
                                             flex_grow: 1.0,
-                                            row_gap: Val::Px(5.0),
+                                            row_gap: Val::Vh(0.5),
                                             ..default()
                                         },))
                                         .with_children(|parent| {
@@ -287,11 +294,12 @@ fn setup_credits_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(200.0),
-                                height: Val::Px(50.0),
+                                width: Val::Vw(30.0),
+                                max_width: Val::Px(200.0),
+                                height: Val::Vh(7.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                margin: UiRect::top(Val::Px(20.0)),
+                                margin: UiRect::top(Val::Vh(2.5)),
                                 ..default()
                             },
                             BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
