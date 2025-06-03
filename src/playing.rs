@@ -32,6 +32,7 @@ impl Plugin for PlayingPlugin {
                 update_combo_timer,
                 update_slash_effects,
                 handle_level_completion_events,
+                handle_level_start_events,
             )
                 .run_if(in_state(PauseState::Playing))
                 .run_if(in_state(GameState::Playing)),
@@ -828,6 +829,63 @@ fn play_level1_music(asset_server: Res<AssetServer>, mut commands: Commands, gam
         Level1Music,
         crate::SoundEntity,
     ));
+}
+
+/// Handle level start events when level is selected from pause menu
+fn handle_level_start_events(
+    mut commands: Commands,
+    mut level_start_events: EventReader<LevelStartEvent>,
+    mut game_data: ResMut<GameData>,
+    mut level_data: ResMut<LevelData>,
+    enemy_entities: Query<Entity, With<crate::enemies::EnemyEntity>>,
+    powerup_entities: Query<Entity, With<crate::powerups::PowerupEntity>>,
+    rabbit_entities: Query<Entity, With<crate::powerups::Rabbit>>,
+    fire_entities: Query<Entity, With<crate::powerups::FireIgnition>>,
+    mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
+) {
+    for event in level_start_events.read() {
+        // Hide level complete overlay if visible
+        for mut visibility in &mut level_complete_overlay_query {
+            *visibility = Visibility::Hidden;
+        }
+
+        // Clear all enemies and powerups from the screen
+        for entity in &enemy_entities {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+        for entity in &powerup_entities {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+
+        // Clear all rabbits from the screen
+        for entity in &rabbit_entities {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+
+        // Clear all fire entities from the screen
+        for entity in &fire_entities {
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+
+        // Reset game data for the selected level
+        game_data.score = 0;
+        game_data.combo = 0;
+        game_data.combo_timer.reset();
+        game_data.dandelion_count = 0;
+
+        // Set the current level to the selected level
+        level_data.set_current_level(event.level_id);
+
+        info!("Game state reset for level {}", event.level_id);
+    }
 }
 
 /// Handle level completion events and transitions

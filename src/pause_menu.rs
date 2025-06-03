@@ -481,7 +481,6 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                         width: Val::Vw(90.0),
                         max_width: Val::Px(800.0),
                         height: Val::Vh(85.0),
-                        max_height: Val::Px(700.0),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::FlexStart,
@@ -495,14 +494,15 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                 .with_children(|parent| {
                     parent.spawn((Text::new("Level Selection"), TextFont { font_size: 28.0, ..default() }, TextColor(Color::WHITE)));
 
-                    // Level grid container
+                    // Level grid container - scrollable
                     parent
                         .spawn((Node {
                             width: Val::Percent(100.0),
+                            height: Val::Percent(70.0),
                             flex_direction: FlexDirection::Column,
                             row_gap: Val::Vh(2.0),
-                            flex_grow: 1.0,
                             overflow: Overflow::scroll_y(),
+                            padding: UiRect::all(Val::Px(10.0)),
                             ..default()
                         },))
                         .with_children(|parent| {
@@ -526,7 +526,7 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                                                         Button,
                                                         Node {
                                                             width: Val::Percent(45.0),
-                                                            height: Val::Vh(15.0),
+                                                            // height: Val::Vh(15.0),
                                                             flex_direction: FlexDirection::Column,
                                                             align_items: AlignItems::Center,
                                                             justify_content: JustifyContent::Center,
@@ -560,10 +560,10 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
                                                             .with_children(|parent| {
                                                                 for star_index in 0..3 {
                                                                     parent.spawn((
-                                                                        Text::new("☆"), // Hollow star - will be updated based on progress
+                                                                        Text::new("*"), // Simple asterisk - will be updated based on progress
                                                                         TextFont { font_size: 16.0, ..default() },
                                                                         TextColor(Color::srgb(0.8, 0.8, 0.2)),
-                                                                        StarDisplay { level_id, star_index }, // Will be updated
+                                                                        StarDisplay { level_id, star_index },
                                                                     ));
                                                                 }
                                                             });
@@ -600,19 +600,20 @@ fn setup_level_selection_menu(mut commands: Commands, _asset_server: Res<AssetSe
 }
 
 /// Update star displays based on level progress
-fn update_star_displays(mut star_query: Query<(&mut Text, &StarDisplay)>, level_data: Res<LevelData>) {
-    for (mut text, star_display) in &mut star_query {
+fn update_star_displays(mut star_query: Query<(&mut Text, &mut TextColor, &StarDisplay)>, level_data: Res<LevelData>) {
+    for (mut text, mut text_color, star_display) in &mut star_query {
         if let Some(progress) = level_data.level_progress.get((star_display.level_id - 1) as usize) {
             let filled_stars = progress.best_stars;
 
             // Update star text based on index and progress
-            let star_text = if star_display.star_index < filled_stars {
-                "★" // Filled star
+            let (star_text, star_color) = if star_display.star_index < filled_stars {
+                ("*", Color::srgb(1.0, 0.8, 0.0)) // Gold asterisk for filled
             } else {
-                "☆" // Hollow star
+                ("o", Color::srgb(0.4, 0.4, 0.4)) // Gray circle for empty
             };
 
             text.0 = star_text.to_string();
+            *text_color = TextColor(star_color);
         }
     }
 }
