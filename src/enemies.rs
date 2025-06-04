@@ -8,12 +8,21 @@ use crate::GameState;
 use crate::pause_menu::PauseState;
 use crate::playing::GameData;
 
+/// Event triggered when a dandelion dies
+#[derive(Event)]
+pub struct DandelionDeathEvent {
+    pub position: Vec2,
+    pub size: DandelionSize,
+}
+
 /// Plugin for handling enemy spawning and behavior
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (setup_enemy_timer, setup_area_tracker, setup_variety_spawner))
+        app.add_event::<DandelionDeathEvent>()
+            .add_observer(on_dandelion_death)
+            .add_systems(OnEnter(GameState::Playing), (setup_enemy_timer, setup_area_tracker, setup_variety_spawner))
             .add_systems(
                 Update,
                 (
@@ -505,7 +514,7 @@ fn process_slash_attack(
 }
 
 /// Calculate distance from a point to a line segment
-fn distance_point_to_line_segment(point: Vec2, line_start: Vec2, line_end: Vec2) -> f32 {
+pub fn distance_point_to_line_segment(point: Vec2, line_start: Vec2, line_end: Vec2) -> f32 {
     let line_vec = line_end - line_start;
     let line_length_squared = line_vec.length_squared();
 
@@ -521,32 +530,92 @@ fn distance_point_to_line_segment(point: Vec2, line_start: Vec2, line_end: Vec2)
     point.distance(projection)
 }
 
+/// Process delayed slash damage for second slash in double slash
+pub fn process_delayed_slash_damage(
+    commands: &mut Commands,
+    game_data: &mut ResMut<GameData>,
+    game_assets: &Res<crate::GameAssets>,
+    dandelion_query: &mut Query<(Entity, &mut Dandelion, &Transform)>,
+    slash_start: Vec2,
+    slash_end: Vec2,
+) -> u32 {
+    let mut hit_count = 0;
+
+    for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
+        let dandelion_pos = transform.translation.truncate();
+        let collision_radius = dandelion.size.collision_radius();
+
+        // Calculate distance from dandelion to delayed slash line
+        let distance_to_line = distance_point_to_line_segment(dandelion_pos, slash_start, slash_end);
+
+        if distance_to_line <= collision_radius {
+            // Apply damage manually (similar to damage_dandelion but without creating the game state)
+            dandelion.health = dandelion.health.saturating_sub(1);
+
+            // Play slash sound effect when dandelion is hit
+            play_slash_sound(commands, game_assets);
+
+            if dandelion.health == 0 {
+                // Trigger death event for seed spawning
+                commands.trigger(DandelionDeathEvent {
+                    position: dandelion_pos,
+                    size: dandelion.size,
+                });
+
+                // Handle destruction without the full game state
+                game_data.add_dandelion_kill();
+
+                // Despawn the dandelion
+                if let Ok(mut ec) = commands.get_entity(entity) {
+                    ec.despawn();
+                }
+            }
+
+            hit_count += 1;
+        }
+    }
+
+    hit_count
+}
+
+/// Observer that handles dandelion death events and spawns seeds
+fn on_dandelion_death(trigger: Trigger<DandelionDeathEvent>, mut commands: Commands, asset_server: Res<AssetServer>) {
+    let event = trigger.event();
+    let spawn_count = event.size.spawn_count();
+
+    spawn_seed_orbs(&mut commands, &asset_server, event.position, spawn_count);
+
+    debug!(
+        "Dandelion death observer: spawning {} seeds at ({:.1}, {:.1})",
+        spawn_count, event.position.x, event.position.y
+    );
+}
+
 /// Apply damage to a dandelion and handle destruction
-fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
+pub fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
     dandelion.health = dandelion.health.saturating_sub(1);
 
     // Play slash sound effect when dandelion is hit
     play_slash_sound(&mut game_state.commands, &game_state.game_assets);
 
     if dandelion.health == 0 {
-        destroy_dandelion(game_state, entity, dandelion, position);
+        // Trigger death event for seed spawning
+        game_state.commands.trigger(DandelionDeathEvent {
+            position,
+            size: dandelion.size,
+        });
+
+        // Handle the rest of destruction immediately
+        game_state.area_tracker.total_area -= dandelion.size.visual_area();
+        game_state.commands.entity(entity).despawn();
+        game_state.game_data.add_dandelion_kill();
+        game_state.game_data.dandelion_count = game_state.game_data.dandelion_count.saturating_sub(1);
+
+        debug!(
+            "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x",
+            position.x, position.y, game_state.game_data.score, game_state.game_data.combo
+        );
     }
-}
-
-/// Destroy a dandelion and spawn seeds
-fn destroy_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &Dandelion, position: Vec2) {
-    let spawn_count = dandelion.size.spawn_count();
-
-    game_state.area_tracker.total_area -= dandelion.size.visual_area();
-    spawn_seed_orbs(&mut game_state.commands, &game_state.asset_server, position, spawn_count);
-    game_state.commands.entity(entity).despawn();
-    game_state.game_data.add_dandelion_kill();
-    game_state.game_data.dandelion_count = game_state.game_data.dandelion_count.saturating_sub(1);
-
-    debug!(
-        "Dandelion destroyed at ({:.1}, {:.1})! Score: {}, Combo: {}x, Spawning {} seeds",
-        position.x, position.y, game_state.game_data.score, game_state.game_data.combo, spawn_count
-    );
 }
 
 /// Play slash sound effect

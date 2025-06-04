@@ -915,8 +915,10 @@ fn update_slash_effects(mut commands: Commands, mut slash_query: Query<(Entity, 
 fn update_delayed_slash_effects(
     mut commands: Commands,
     mut delayed_query: Query<(Entity, &mut DelayedSlashEffect)>,
+    mut dandelion_query: Query<(Entity, &mut crate::enemies::Dandelion, &Transform)>,
     time: Res<Time>,
     game_assets: Res<crate::GameAssets>,
+    mut game_data: ResMut<GameData>,
 ) {
     for (entity, mut delayed_effect) in delayed_query.iter_mut() {
         delayed_effect.delay_timer.tick(time.delta());
@@ -925,12 +927,15 @@ fn update_delayed_slash_effects(
             // Spawn the actual slash effect
             spawn_slash_effect(&mut commands, delayed_effect.slash_start, delayed_effect.slash_end);
 
-            // Play slash sound for delayed slash
-            commands.spawn((
-                AudioPlayer(game_assets.slash_sound.clone()),
-                crate::powerups::RabbitSoundTimer::new(0.5),
-                crate::SoundEntity,
-            ));
+            // Process delayed slash damage and only play sound if enemies are hit
+            let _hit_count = crate::enemies::process_delayed_slash_damage(
+                &mut commands,
+                &mut game_data,
+                &game_assets,
+                &mut dandelion_query,
+                delayed_effect.slash_start,
+                delayed_effect.slash_end,
+            );
 
             // Remove the delayed effect entity
             if let Ok(mut ec) = commands.get_entity(entity) {
