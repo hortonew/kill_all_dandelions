@@ -329,7 +329,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
                     // Attack mode display
                     parent.spawn((
-                        Text::new("Mode: Click"),
+                        Text::new("Click"),
                         TextFont { font_size: 18.0, ..default() },
                         TextColor(Color::srgb(0.9, 0.7, 0.3)),
                         AttackModeText,
@@ -444,7 +444,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ))
                                 .with_children(|parent| {
                                     parent.spawn((
-                                        Text::new("Mode: Click"),
+                                        Text::new("Click"),
                                         TextFont { font_size: 16.0, ..default() },
                                         TextColor(Color::WHITE),
                                         DynamicFontSize { base_size: 16.0 },
@@ -853,14 +853,14 @@ fn update_button_text(
     let mode_text = if game_data.slash_mode {
         let total_stars = level_data.get_total_stars();
         if total_stars >= 15 {
-            "Mode: Extended Double Slash"
+            "2x Slash+"
         } else if total_stars >= 9 {
-            "Mode: Double Slash"
+            "2x Slash"
         } else {
-            "Mode: Slash"
+            "Slash"
         }
     } else {
-        "Mode: Click"
+        "Click"
     };
 
     for children in attack_mode_button_query.iter() {
