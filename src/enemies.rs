@@ -359,6 +359,7 @@ fn handle_dandelion_clicks(
     touches: Res<Touches>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
+    level_data: Option<Res<crate::levels::LevelData>>,
 ) {
     // Check for mouse click
     let mouse_clicked = mouse_input.just_pressed(MouseButton::Left);
@@ -388,7 +389,7 @@ fn handle_dandelion_clicks(
 
     // Check if using slash mode or regular click mode
     if game_state.game_data.slash_mode {
-        process_slash_attack(game_state, dandelion_query, world_pos);
+        process_slash_attack(game_state, dandelion_query, world_pos, level_data);
     } else {
         process_dandelion_hit(game_state, dandelion_query, world_pos);
     }
@@ -429,36 +430,74 @@ fn process_dandelion_hit(mut game_state: DandelionGameState, mut dandelion_query
 }
 
 /// Process slash attack hitting all dandelions along a diagonal line
-fn process_slash_attack(mut game_state: DandelionGameState, mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>, click_pos: Vec2) {
+fn process_slash_attack(
+    mut game_state: DandelionGameState,
+    mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
+    click_pos: Vec2,
+    level_data: Option<Res<crate::levels::LevelData>>,
+) {
     let slash_offset = game_state.game_data.slash_offset;
+    let total_stars = level_data.as_ref().map(|ld| ld.get_total_stars()).unwrap_or(0);
 
-    // Create diagonal slash line from top-right to bottom-left of click position
-    let start_pos = click_pos + Vec2::new(slash_offset, slash_offset);
-    let end_pos = click_pos - Vec2::new(slash_offset, slash_offset);
+    // Check if double slash is unlocked (9+ stars)
+    let is_double_slash = total_stars >= 9;
 
-    // Spawn visual slash effect
-    crate::playing::spawn_slash_effect(&mut game_state.commands, start_pos, end_pos);
+    // First slash: diagonal from top-right to bottom-left
+    let start_pos1 = click_pos + Vec2::new(slash_offset, slash_offset);
+    let end_pos1 = click_pos - Vec2::new(slash_offset, slash_offset);
 
-    let mut hit_count = 0;
+    // Spawn visual slash effect for first slash
+    crate::playing::spawn_slash_effect(&mut game_state.commands, start_pos1, end_pos1);
 
+    let mut total_hit_count = 0;
+
+    // Process first slash
     for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
         let dandelion_pos = transform.translation.truncate();
         let collision_radius = dandelion.size.collision_radius();
 
-        // Calculate distance from dandelion to slash line
-        let distance_to_line = distance_point_to_line_segment(dandelion_pos, start_pos, end_pos);
+        // Calculate distance from dandelion to first slash line
+        let distance_to_line = distance_point_to_line_segment(dandelion_pos, start_pos1, end_pos1);
 
         if distance_to_line <= collision_radius {
             damage_dandelion(&mut game_state, entity, &mut dandelion, dandelion_pos);
-            hit_count += 1;
+            total_hit_count += 1;
         }
     }
 
-    if hit_count > 0 {
-        debug!(
-            "Slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
-            hit_count, start_pos.x, start_pos.y, end_pos.x, end_pos.y
-        );
+    // If double slash is unlocked, perform second slash
+    if is_double_slash {
+        // Second slash: diagonal from top-left to bottom-right (reverse diagonal)
+        let start_pos2 = click_pos + Vec2::new(-slash_offset, slash_offset);
+        let end_pos2 = click_pos - Vec2::new(-slash_offset, slash_offset);
+
+        // Spawn visual slash effect for second slash with slight delay (0.1 seconds)
+        crate::playing::spawn_delayed_slash_effect(&mut game_state.commands, start_pos2, end_pos2, 0.1);
+
+        // Process second slash
+        for (entity, mut dandelion, transform) in dandelion_query.iter_mut() {
+            let dandelion_pos = transform.translation.truncate();
+            let collision_radius = dandelion.size.collision_radius();
+
+            // Calculate distance from dandelion to second slash line
+            let distance_to_line = distance_point_to_line_segment(dandelion_pos, start_pos2, end_pos2);
+
+            if distance_to_line <= collision_radius {
+                damage_dandelion(&mut game_state, entity, &mut dandelion, dandelion_pos);
+                total_hit_count += 1;
+            }
+        }
+
+        if total_hit_count > 0 {
+            debug!("Double slash attack hit {} dandelions total (stars: {})", total_hit_count, total_stars);
+        }
+    } else {
+        if total_hit_count > 0 {
+            debug!(
+                "Single slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
+                total_hit_count, start_pos1.x, start_pos1.y, end_pos1.x, end_pos1.y
+            );
+        }
     }
 }
 

@@ -31,6 +31,7 @@ impl Plugin for PlayingPlugin {
                 update_button_text,
                 update_combo_timer,
                 update_slash_effects,
+                update_delayed_slash_effects,
                 handle_level_completion_events,
                 handle_level_start_events,
                 update_dynamic_font_sizes,
@@ -161,6 +162,14 @@ struct MusicButton;
 #[derive(Component)]
 pub struct SlashEffect {
     timer: Timer,
+}
+
+/// Component for delayed slash effect (used in double slash)
+#[derive(Component)]
+pub struct DelayedSlashEffect {
+    delay_timer: Timer,
+    slash_start: Vec2,
+    slash_end: Vec2,
 }
 
 /// Marker component for dynamic font scaling
@@ -671,6 +680,7 @@ fn update_curb_appeal_display(
 /// Update attack mode display
 fn update_attack_mode_display(
     game_data: &GameData,
+    level_data: &crate::levels::LevelData,
     mut mode_query: Query<
         &mut Text,
         (
@@ -684,7 +694,12 @@ fn update_attack_mode_display(
     >,
 ) {
     if let Ok(mut text) = mode_query.single_mut() {
-        let mode_text = if game_data.slash_mode { "Slash" } else { "Click" };
+        let mode_text = if game_data.slash_mode {
+            let total_stars = level_data.get_total_stars();
+            if total_stars >= 9 { "Double Slash" } else { "Slash" }
+        } else {
+            "Click"
+        };
         **text = format!("Mode: {}", mode_text);
     }
 }
@@ -816,7 +831,7 @@ fn update_ui(
     update_combo_display(&game_data, combo_query);
     update_combo_timer_display(&game_data, combo_timer_bar_query);
     update_curb_appeal_display(dandelion_query, curb_appeal_query);
-    update_attack_mode_display(&game_data, mode_query);
+    update_attack_mode_display(&game_data, &level_data, mode_query);
     update_level_progress_display(&game_data, &level_data, progress_query);
     update_current_level_display(&level_data, level_query);
 }
@@ -824,11 +839,17 @@ fn update_ui(
 /// Update mobile button text to match current mode
 fn update_button_text(
     game_data: Res<GameData>,
+    level_data: Res<crate::levels::LevelData>,
     attack_mode_button_query: Query<&Children, With<AttackModeButton>>,
     music_button_query: Query<&Children, With<MusicButton>>,
     mut text_query: Query<&mut Text>,
 ) {
-    let mode_text = if game_data.slash_mode { "Mode: Slash" } else { "Mode: Click" };
+    let mode_text = if game_data.slash_mode {
+        let total_stars = level_data.get_total_stars();
+        if total_stars >= 9 { "Mode: Double Slash" } else { "Mode: Slash" }
+    } else {
+        "Mode: Click"
+    };
 
     for children in attack_mode_button_query.iter() {
         for child in children.iter() {
@@ -878,6 +899,23 @@ fn update_slash_effects(mut commands: Commands, mut slash_query: Query<(Entity, 
     }
 }
 
+/// Update delayed slash effects
+fn update_delayed_slash_effects(mut commands: Commands, mut delayed_query: Query<(Entity, &mut DelayedSlashEffect)>, time: Res<Time>) {
+    for (entity, mut delayed_effect) in delayed_query.iter_mut() {
+        delayed_effect.delay_timer.tick(time.delta());
+
+        if delayed_effect.delay_timer.just_finished() {
+            // Spawn the actual slash effect
+            spawn_slash_effect(&mut commands, delayed_effect.slash_start, delayed_effect.slash_end);
+
+            // Remove the delayed effect entity
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
+        }
+    }
+}
+
 /// Spawn a visual slash effect
 pub fn spawn_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec2) {
     let direction = end_pos - start_pos;
@@ -897,6 +935,18 @@ pub fn spawn_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec
             timer: Timer::from_seconds(0.2, TimerMode::Once), // 200ms duration
         },
         GameEntity, // Add GameEntity component for proper cleanup
+    ));
+}
+
+/// Spawn a delayed slash effect for double slash
+pub fn spawn_delayed_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec2, delay: f32) {
+    commands.spawn((
+        DelayedSlashEffect {
+            delay_timer: Timer::from_seconds(delay, TimerMode::Once),
+            slash_start: start_pos,
+            slash_end: end_pos,
+        },
+        GameEntity,
     ));
 }
 
