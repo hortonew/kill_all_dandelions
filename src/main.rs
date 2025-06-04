@@ -103,7 +103,7 @@ fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         seed: asset_server.load("seed.png"),
         slash_sound: asset_server.load("audio/slash.wav"),
         rabbit_sound: asset_server.load("audio/rabbit.wav"),
-        flamethrower_sound: asset_server.load("audio/slash.wav"),
+        flamethrower_sound: asset_server.load("audio/flamethrower.wav"),
     };
     commands.insert_resource(assets);
 }
