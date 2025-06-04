@@ -2,11 +2,10 @@ use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashMap;
 
-use crate::GameAssets;
-use crate::GameState;
 use crate::enemies::{Dandelion, DandelionAreaTracker};
 use crate::pause_menu::PauseState;
 use crate::playing::GameData;
+use crate::{GameAssets, GameState};
 
 // Constants for powerup behavior
 const POWERUP_SPAWN_INTERVAL: f32 = 10.0;
@@ -24,8 +23,16 @@ const BOTTOM_UI_HEIGHT_RATIO: f32 = 0.08;
 
 /// Component to track rabbit sound duration
 #[derive(Component)]
-struct RabbitSoundTimer {
+pub struct RabbitSoundTimer {
     timer: Timer,
+}
+
+impl RabbitSoundTimer {
+    pub fn new(duration: f32) -> Self {
+        Self {
+            timer: Timer::from_seconds(duration, TimerMode::Once),
+        }
+    }
 }
 
 /// Plugin for handling powerup spawning and behavior
@@ -98,7 +105,7 @@ pub struct Powerup {
 
 /// Component for powerup spawn effect (blue expanding circle)
 #[derive(Component)]
-struct PowerupEffect {
+pub struct PowerupEffect {
     timer: Timer,
     initial_scale: f32,
 }
@@ -808,9 +815,7 @@ fn play_rabbit_sound(commands: &mut Commands, game_assets: &GameAssets) {
             mode: bevy::audio::PlaybackMode::Once,
             ..default()
         },
-        RabbitSoundTimer {
-            timer: Timer::from_seconds(0.4, TimerMode::Once),
-        },
+        RabbitSoundTimer::new(0.4),
         crate::SoundEntity,
     ));
 }
@@ -823,15 +828,13 @@ fn play_flamethrower_sound(commands: &mut Commands, game_assets: &GameAssets) {
             mode: bevy::audio::PlaybackMode::Once,
             ..default()
         },
-        RabbitSoundTimer {
-            timer: Timer::from_seconds(0.6, TimerMode::Once),
-        },
+        RabbitSoundTimer::new(0.6),
         crate::SoundEntity,
     ));
 }
 
 /// Update rabbit sound timers and despawn audio entities when timer expires
-fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound_query: Query<(Entity, &mut RabbitSoundTimer)>) {
+pub fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound_query: Query<(Entity, &mut RabbitSoundTimer)>) {
     for (entity, mut sound_timer) in sound_query.iter_mut() {
         sound_timer.timer.tick(time.delta());
         if sound_timer.timer.finished() {

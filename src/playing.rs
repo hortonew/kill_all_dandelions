@@ -159,7 +159,7 @@ struct MusicButton;
 
 /// Component for visual slash effect
 #[derive(Component)]
-struct SlashEffect {
+pub struct SlashEffect {
     timer: Timer,
 }
 

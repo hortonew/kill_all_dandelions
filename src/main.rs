@@ -30,6 +30,20 @@ impl Default for GameState {
 #[derive(Component)]
 pub struct SoundEntity;
 
+// Resource for entity diagnostic logging timer
+// #[derive(Resource)]
+// struct EntityDiagnosticTimer {
+//     timer: Timer,
+// }
+
+// impl Default for EntityDiagnosticTimer {
+//     fn default() -> Self {
+//         Self {
+//             timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+//         }
+//     }
+// }
+
 fn main() -> AppExit {
     App::new()
         .add_plugins(
@@ -51,8 +65,10 @@ fn main() -> AppExit {
                 }),
         )
         .init_state::<GameState>()
+        //.init_resource::<EntityDiagnosticTimer>()
         .add_systems(Startup, preload_assets)
         .add_systems(OnExit(GameState::Playing), cleanup_sounds)
+        // .add_systems(Update, log_entity_counts.run_if(in_state(GameState::Playing)))
         .add_plugins((MenuPlugin, PauseMenuPlugin, PlayingPlugin, EnemiesPlugin, PowerupsPlugin, LevelsPlugin))
         .run()
 }
@@ -101,3 +117,57 @@ fn cleanup_sounds(mut commands: Commands, sound_entities: Query<Entity, With<Sou
     }
     debug!("Sound entities cleaned up");
 }
+
+// Log entity counts every second for performance monitoring
+// fn log_entity_counts(
+//     mut timer_res: ResMut<EntityDiagnosticTimer>,
+//     time: Res<Time>,
+//     dandelions: Query<Entity, With<enemies::Dandelion>>,
+//     rabbits: Query<Entity, With<powerups::Rabbit>>,
+//     fire_ignitions: Query<Entity, With<powerups::FireIgnition>>,
+//     sound_entities: Query<Entity, With<SoundEntity>>,
+//     rabbit_sound_timers: Query<Entity, With<powerups::RabbitSoundTimer>>,
+//     enemy_entities: Query<Entity, With<enemies::EnemyEntity>>,
+//     powerup_entities: Query<Entity, With<powerups::PowerupEntity>>,
+//     health_bars: Query<Entity, With<enemies::HealthBar>>,
+//     slash_effects: Query<Entity, With<playing::SlashEffect>>,
+//     seed_orbs: Query<Entity, With<enemies::SeedOrb>>,
+//     merge_effects: Query<Entity, With<enemies::MergeEffect>>,
+//     moving_dandelions: Query<Entity, With<enemies::MovingDandelion>>,
+//     powerup_effects: Query<Entity, With<powerups::PowerupEffect>>,
+// ) {
+//     timer_res.timer.tick(time.delta());
+
+//     if timer_res.timer.just_finished() {
+//         let dandelion_count = dandelions.iter().count();
+//         let rabbit_count = rabbits.iter().count();
+//         let fire_count = fire_ignitions.iter().count();
+//         let sound_count = sound_entities.iter().count();
+//         let rabbit_sound_count = rabbit_sound_timers.iter().count();
+//         let enemy_count = enemy_entities.iter().count();
+//         let powerup_count = powerup_entities.iter().count();
+//         let health_bar_count = health_bars.iter().count();
+//         let slash_effect_count = slash_effects.iter().count();
+//         let seed_orb_count = seed_orbs.iter().count();
+//         let merge_effect_count = merge_effects.iter().count();
+//         let moving_dandelion_count = moving_dandelions.iter().count();
+//         let powerup_effect_count = powerup_effects.iter().count();
+
+//         debug!(
+//             "Entity counts - Dandelions: {}, Rabbits: {}, Fires: {}, Sounds: {}, RabbitSounds: {}, Enemies: {}, Powerups: {}, HealthBars: {}, SlashEffects: {}, SeedOrbs: {}, MergeEffects: {}, MovingDandelions: {}, PowerupEffects: {}",
+//             dandelion_count,
+//             rabbit_count,
+//             fire_count,
+//             sound_count,
+//             rabbit_sound_count,
+//             enemy_count,
+//             powerup_count,
+//             health_bar_count,
+//             slash_effect_count,
+//             seed_orb_count,
+//             merge_effect_count,
+//             moving_dandelion_count,
+//             powerup_effect_count
+//         );
+//     }
+// }

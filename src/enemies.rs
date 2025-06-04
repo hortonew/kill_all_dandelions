@@ -186,7 +186,7 @@ impl DandelionSize {
 
 /// Component for seed orbs that spawn new dandelions
 #[derive(Component)]
-struct SeedOrb {
+pub struct SeedOrb {
     target_position: Vec2,
     spawn_timer: Timer,
 }
@@ -197,14 +197,14 @@ pub struct EnemyEntity;
 
 /// Component for merge effect
 #[derive(Component)]
-struct MergeEffect {
+pub struct MergeEffect {
     timer: Timer,
     initial_scale: f32,
 }
 
 /// Component for moving dandelions (huge size only)
 #[derive(Component)]
-struct MovingDandelion {
+pub struct MovingDandelion {
     velocity: Vec2,
     speed: f32,
     direction_change_timer: Timer,
@@ -239,7 +239,7 @@ impl Default for UpgradeCooldown {
 
 /// Component for health bars attached to damaged dandelions
 #[derive(Component)]
-struct HealthBar {
+pub struct HealthBar {
     dandelion_entity: Entity,
     max_health: u32,
 }
@@ -509,7 +509,11 @@ fn destroy_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandel
 
 /// Play slash sound effect
 fn play_slash_sound(commands: &mut Commands, game_assets: &crate::GameAssets) {
-    commands.spawn((AudioPlayer(game_assets.slash_sound.clone()), crate::SoundEntity));
+    commands.spawn((
+        AudioPlayer(game_assets.slash_sound.clone()),
+        crate::powerups::RabbitSoundTimer::new(0.5),
+        crate::SoundEntity,
+    ));
 }
 
 /// Debug system to count dandelions (runs less frequently)
