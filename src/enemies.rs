@@ -495,14 +495,12 @@ fn process_slash_attack(
             let slash_type = if total_stars >= 15 { "Extended double" } else { "Double" };
             debug!("{} slash attack hit {} dandelions total (stars: {})", slash_type, total_hit_count, total_stars);
         }
-    } else {
-        if total_hit_count > 0 {
-            let slash_type = if total_stars >= 15 { "Extended single" } else { "Single" };
-            debug!(
-                "{} slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
-                slash_type, total_hit_count, start_pos1.x, start_pos1.y, end_pos1.x, end_pos1.y
-            );
-        }
+    } else if total_hit_count > 0 {
+        let slash_type = if total_stars >= 15 { "Extended single" } else { "Single" };
+        debug!(
+            "{} slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
+            slash_type, total_hit_count, start_pos1.x, start_pos1.y, end_pos1.x, end_pos1.y
+        );
     }
 }
 

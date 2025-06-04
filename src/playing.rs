@@ -469,7 +469,7 @@ fn setup_game_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ))
                                 .with_children(|parent| {
                                     parent.spawn((
-                                        Text::new("♪ ON"),
+                                        Text::new("Music ON"),
                                         TextFont { font_size: 16.0, ..default() },
                                         TextColor(Color::WHITE),
                                         DynamicFontSize { base_size: 16.0 },
@@ -696,7 +696,13 @@ fn update_attack_mode_display(
     if let Ok(mut text) = mode_query.single_mut() {
         let mode_text = if game_data.slash_mode {
             let total_stars = level_data.get_total_stars();
-            if total_stars >= 9 { "Double Slash" } else { "Slash" }
+            if total_stars >= 15 {
+                "Extended Double Slash"
+            } else if total_stars >= 9 {
+                "Double Slash"
+            } else {
+                "Slash"
+            }
         } else {
             "Click"
         };
@@ -846,7 +852,13 @@ fn update_button_text(
 ) {
     let mode_text = if game_data.slash_mode {
         let total_stars = level_data.get_total_stars();
-        if total_stars >= 9 { "Mode: Double Slash" } else { "Mode: Slash" }
+        if total_stars >= 15 {
+            "Mode: Extended Double Slash"
+        } else if total_stars >= 9 {
+            "Mode: Double Slash"
+        } else {
+            "Mode: Slash"
+        }
     } else {
         "Mode: Click"
     };
