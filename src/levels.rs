@@ -268,6 +268,7 @@ impl LevelData {
     }
 
     /// Get progress for a specific level
+    #[allow(dead_code)]
     pub fn get_level_progress(&self, level_id: u32) -> Option<&LevelProgress> {
         if level_id > 0 && level_id as usize <= self.level_progress.len() {
             Some(&self.level_progress[level_id as usize - 1])
@@ -332,6 +333,7 @@ impl LevelData {
     }
 
     /// Get total stars earned across all levels
+    #[allow(dead_code)]
     pub fn get_total_stars(&self) -> u32 {
         self.level_progress.iter().map(|p| p.best_stars).sum()
     }
@@ -454,6 +456,7 @@ pub struct LevelFailedEvent {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum FailureReason {
     TimeOut,
     PlayerQuit,

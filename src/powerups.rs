@@ -41,7 +41,7 @@ impl Plugin for PowerupsPlugin {
                     spawn_powerups,
                     handle_powerup_clicks,
                     update_powerup_effects,
-                    // handle_debug_keys,
+                    handle_debug_keys,
                     update_rabbits,
                     update_rabbit_sprites,
                     update_fire_system,

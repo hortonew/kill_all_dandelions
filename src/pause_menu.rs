@@ -576,7 +576,7 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                         .with_children(|parent| {
                             let total_levels = level_data.levels.len();
                             let levels_per_row = 3; // Better for mobile landscape
-                            let total_rows = (total_levels + levels_per_row - 1) / levels_per_row;
+                            let total_rows = total_levels.div_ceil(levels_per_row);
 
                             // Create level cards in rows of 3 for better mobile compatibility
                             for row in 0..total_rows {
