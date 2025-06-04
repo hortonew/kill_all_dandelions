@@ -18,6 +18,7 @@ impl Plugin for PauseMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<PauseState>()
             .init_state::<PauseMenuState>()
+            .init_resource::<TouchScrollState>()
             .add_systems(OnEnter(PauseState::Paused), (setup_pause_menu_on_pause, pause_sounds))
             .add_systems(OnExit(PauseState::Paused), (cleanup_pause_menu, resume_sounds))
             .add_systems(
@@ -974,13 +975,9 @@ struct TouchScrollState {
 fn handle_touch_scroll(
     mut touch_input: EventReader<TouchInput>,
     mut scroll_query: Query<&mut ScrollPosition>,
-    touch_scroll_state: Option<ResMut<TouchScrollState>>,
+    mut touch_scroll_state: ResMut<TouchScrollState>,
     pause_menu_state: Res<State<PauseMenuState>>,
 ) {
-    let Some(mut touch_scroll_state) = touch_scroll_state else {
-        return;
-    };
-
     // Only process touch input in level selection
     if *pause_menu_state.get() != PauseMenuState::LevelSelection {
         return;
@@ -988,20 +985,30 @@ fn handle_touch_scroll(
 
     for event in touch_input.read() {
         match event.phase {
-            TouchPhase::Started | TouchPhase::Moved => {
+            TouchPhase::Started => {
+                // Initialize tracking on touch start
+                touch_scroll_state.last_touch_position = Some(event.position);
+                touch_scroll_state.is_scrolling = false; // Don't scroll until we get movement
+            }
+            TouchPhase::Moved => {
                 let position = event.position;
+
                 // Update scroll position based on touch movement
                 if let Some(last_position) = touch_scroll_state.last_touch_position {
                     let delta = position - last_position;
 
-                    for mut scroll_position in &mut scroll_query {
-                        scroll_position.offset_y -= delta.y * 2.0; // Multiply by 2 for better touch sensitivity
+                    // Only scroll if there's meaningful movement (helps prevent accidental scrolls)
+                    if delta.length() > 2.0 {
+                        for mut scroll_position in &mut scroll_query {
+                            // Use vertical delta for vertical scrolling with enhanced sensitivity for mobile
+                            scroll_position.offset_y -= delta.y * 1.5;
+                        }
+                        touch_scroll_state.is_scrolling = true;
                     }
                 }
 
                 // Update last touch position
                 touch_scroll_state.last_touch_position = Some(position);
-                touch_scroll_state.is_scrolling = true;
             }
             TouchPhase::Ended | TouchPhase::Canceled => {
                 // Reset scrolling state on touch end
