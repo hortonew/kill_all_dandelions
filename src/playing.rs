@@ -900,13 +900,25 @@ fn update_slash_effects(mut commands: Commands, mut slash_query: Query<(Entity, 
 }
 
 /// Update delayed slash effects
-fn update_delayed_slash_effects(mut commands: Commands, mut delayed_query: Query<(Entity, &mut DelayedSlashEffect)>, time: Res<Time>) {
+fn update_delayed_slash_effects(
+    mut commands: Commands,
+    mut delayed_query: Query<(Entity, &mut DelayedSlashEffect)>,
+    time: Res<Time>,
+    game_assets: Res<crate::GameAssets>,
+) {
     for (entity, mut delayed_effect) in delayed_query.iter_mut() {
         delayed_effect.delay_timer.tick(time.delta());
 
         if delayed_effect.delay_timer.just_finished() {
             // Spawn the actual slash effect
             spawn_slash_effect(&mut commands, delayed_effect.slash_start, delayed_effect.slash_end);
+
+            // Play slash sound for delayed slash
+            commands.spawn((
+                AudioPlayer(game_assets.slash_sound.clone()),
+                crate::powerups::RabbitSoundTimer::new(0.5),
+                crate::SoundEntity,
+            ));
 
             // Remove the delayed effect entity
             if let Ok(mut ec) = commands.get_entity(entity) {

@@ -436,11 +436,14 @@ fn process_slash_attack(
     click_pos: Vec2,
     level_data: Option<Res<crate::levels::LevelData>>,
 ) {
-    let slash_offset = game_state.game_data.slash_offset;
+    let base_slash_offset = game_state.game_data.slash_offset;
     let total_stars = level_data.as_ref().map(|ld| ld.get_total_stars()).unwrap_or(0);
 
     // Check if double slash is unlocked (9+ stars)
     let is_double_slash = total_stars >= 9;
+
+    // Check if extended slash is unlocked (15+ stars) - makes slashes twice as long
+    let slash_offset = if total_stars >= 15 { base_slash_offset * 2.0 } else { base_slash_offset };
 
     // First slash: diagonal from top-right to bottom-left
     let start_pos1 = click_pos + Vec2::new(slash_offset, slash_offset);
@@ -489,13 +492,15 @@ fn process_slash_attack(
         }
 
         if total_hit_count > 0 {
-            debug!("Double slash attack hit {} dandelions total (stars: {})", total_hit_count, total_stars);
+            let slash_type = if total_stars >= 15 { "Extended double" } else { "Double" };
+            debug!("{} slash attack hit {} dandelions total (stars: {})", slash_type, total_hit_count, total_stars);
         }
     } else {
         if total_hit_count > 0 {
+            let slash_type = if total_stars >= 15 { "Extended single" } else { "Single" };
             debug!(
-                "Single slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
-                total_hit_count, start_pos1.x, start_pos1.y, end_pos1.x, end_pos1.y
+                "{} slash attack hit {} dandelions along line from ({:.1}, {:.1}) to ({:.1}, {:.1})",
+                slash_type, total_hit_count, start_pos1.x, start_pos1.y, end_pos1.x, end_pos1.y
             );
         }
     }
