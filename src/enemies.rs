@@ -28,6 +28,7 @@ impl Plugin for EnemiesPlugin {
                     update_upgrade_cooldowns,
                     manage_health_bars,
                     update_health_bar_positions,
+                    cleanup_orphaned_health_bars,
                     debug_dandelion_count,
                 )
                     .run_if(in_state(GameState::Playing))
@@ -1179,7 +1180,7 @@ fn manage_health_bars(
     // Remove health bars for dandelions that no longer exist
     for (health_bar_entity, health_bar) in health_bar_query.iter() {
         if dandelion_query.get(health_bar.dandelion_entity).is_err() {
-            // Dandelion no longer exists, remove health bar
+            // Dandelion no longer exists, remove health bar and all its children
             if let Ok(mut entity_commands) = commands.get_entity(health_bar_entity) {
                 entity_commands.despawn();
             }
@@ -1215,6 +1216,25 @@ fn update_health_bar_positions(
                     fill_sprite.color = bar_color;
                 }
             }
+        }
+    }
+}
+
+/// System to detect and clean up orphaned health bars that may have lost their parent dandelion
+fn cleanup_orphaned_health_bars(
+    mut commands: Commands,
+    health_bar_query: Query<(Entity, &HealthBar), With<HealthBar>>,
+    dandelion_query: Query<Entity, With<Dandelion>>,
+) {
+    let valid_dandelions: std::collections::HashSet<Entity> = dandelion_query.iter().collect();
+
+    for (health_bar_entity, health_bar) in health_bar_query.iter() {
+        if !valid_dandelions.contains(&health_bar.dandelion_entity) {
+            // Parent dandelion no longer exists, aggressively clean up health bar
+            if let Ok(mut entity_commands) = commands.get_entity(health_bar_entity) {
+                entity_commands.despawn();
+            }
+            debug!("Cleaned up orphaned health bar for dandelion {:?}", health_bar.dandelion_entity);
         }
     }
 }

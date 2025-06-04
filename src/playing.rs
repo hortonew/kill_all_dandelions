@@ -871,7 +871,9 @@ fn update_slash_effects(mut commands: Commands, mut slash_query: Query<(Entity, 
         sprite.color.set_alpha(1.0 - progress);
 
         if slash_effect.timer.finished() {
-            commands.entity(entity).despawn();
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.despawn();
+            }
         }
     }
 }
@@ -894,7 +896,7 @@ pub fn spawn_slash_effect(commands: &mut Commands, start_pos: Vec2, end_pos: Vec
         SlashEffect {
             timer: Timer::from_seconds(0.2, TimerMode::Once), // 200ms duration
         },
-        GameEntity,
+        GameEntity, // Add GameEntity component for proper cleanup
     ));
 }
 

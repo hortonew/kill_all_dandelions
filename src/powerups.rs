@@ -109,9 +109,9 @@ pub struct PowerupEntity;
 
 /// Resource to track dandelion targeting to prevent rabbits from swarming the same target
 #[derive(Resource, Default)]
-struct RabbitTargeting {
+pub struct RabbitTargeting {
     /// Maps dandelion entity to the rabbit entity targeting it
-    targets: HashMap<Entity, Entity>,
+    pub targets: HashMap<Entity, Entity>,
 }
 
 impl RabbitTargeting {
@@ -190,23 +190,23 @@ impl Default for FireIgnition {
 
 /// Resource to efficiently track active fires and batch damage calculations
 #[derive(Resource, Default)]
-struct FireManager {
+pub struct FireManager {
     /// Spatial grid for efficient collision detection
-    active_fires: Vec<FireData>,
+    pub active_fires: Vec<FireData>,
     /// Queue of pending fire spawns to batch process
-    pending_fires: Vec<PendingFire>,
+    pub pending_fires: Vec<PendingFire>,
     /// Timer for batched processing
     batch_timer: Timer,
 }
 
 #[derive(Clone)]
-struct FireData {
+pub struct FireData {
     position: Vec2,
     radius: f32,
     generation: u32,
 }
 
-struct PendingFire {
+pub struct PendingFire {
     position: Vec2,
     generation: u32,
 }
@@ -220,6 +220,25 @@ impl FireManager {
             active_fires: Vec::new(),
             pending_fires: Vec::new(),
             batch_timer: Timer::from_seconds(Self::BATCH_INTERVAL, TimerMode::Repeating),
+        }
+    }
+
+    /// Clear all fire data to prevent memory leaks
+    fn clear(&mut self) {
+        self.active_fires.clear();
+        self.pending_fires.clear();
+    }
+
+    /// Ensure vectors don't grow unbounded (safety check)
+    fn ensure_bounds(&mut self) {
+        const MAX_FIRES: usize = 200; // Safety limit
+        if self.active_fires.len() > MAX_FIRES {
+            self.active_fires.clear();
+            warn!("FireManager active_fires exceeded bounds, clearing");
+        }
+        if self.pending_fires.len() > MAX_FIRES {
+            self.pending_fires.clear();
+            warn!("FireManager pending_fires exceeded bounds, clearing");
         }
     }
 }
@@ -684,6 +703,9 @@ fn update_fire_system(
     // Clear and rebuild active fires list to prevent stale data accumulation
     fire_manager.active_fires.clear();
 
+    // Safety check to prevent unbounded growth
+    fire_manager.ensure_bounds();
+
     for (fire_entity, mut fire_transform, mut fire, mut sprite) in fire_query.iter_mut() {
         fire.damage_timer.tick(time.delta());
         fire.lifetime.tick(time.delta());
@@ -821,10 +843,20 @@ fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound
 }
 
 /// Cleanup powerup entities when exiting playing state
-fn cleanup_powerups(mut commands: Commands, powerup_entities: Query<Entity, With<PowerupEntity>>, rabbit_targeting: Option<ResMut<RabbitTargeting>>) {
+fn cleanup_powerups(
+    mut commands: Commands,
+    powerup_entities: Query<Entity, With<PowerupEntity>>,
+    rabbit_targeting: Option<ResMut<RabbitTargeting>>,
+    fire_manager: Option<ResMut<FireManager>>,
+) {
     // Clear rabbit targeting HashMap before removing resource
     if let Some(mut targeting) = rabbit_targeting {
         targeting.clear();
+    }
+
+    // Clear fire manager before removing resource
+    if let Some(mut fire_mgr) = fire_manager {
+        fire_mgr.clear();
     }
 
     commands.remove_resource::<PowerupSpawnTimer>();
