@@ -29,11 +29,11 @@ impl LevelData {
             Level {
                 id: 1,
                 name: "Weed Rising".to_string(),
-                target_points: 500,
+                target_points: 2000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(60), // 1 minute
-                    two_star: Duration::from_secs(90),   // 1.5 minutes
-                    one_star: Duration::from_secs(120),  // 2 minutes
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(15),
+                    one_star: Duration::from_secs(20),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 1.0,
@@ -48,11 +48,11 @@ impl LevelData {
             Level {
                 id: 2,
                 name: "Golden Seed".to_string(),
-                target_points: 800,
+                target_points: 4000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(90),
-                    two_star: Duration::from_secs(120),
-                    one_star: Duration::from_secs(180),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 1.2,
@@ -67,11 +67,11 @@ impl LevelData {
             Level {
                 id: 3,
                 name: "Morning Spore".to_string(),
-                target_points: 1200,
+                target_points: 6000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(120),
-                    two_star: Duration::from_secs(150),
-                    one_star: Duration::from_secs(240),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 1.5,
@@ -86,11 +86,11 @@ impl LevelData {
             Level {
                 id: 4,
                 name: "Weedborn".to_string(),
-                target_points: 1800,
+                target_points: 8000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(150),
-                    two_star: Duration::from_secs(180),
-                    one_star: Duration::from_secs(300),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 1.8,
@@ -105,11 +105,11 @@ impl LevelData {
             Level {
                 id: 5,
                 name: "Weed of Ascension".to_string(),
-                target_points: 2500,
+                target_points: 10000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(180),
-                    two_star: Duration::from_secs(240),
-                    one_star: Duration::from_secs(360),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 2.2,
@@ -124,11 +124,11 @@ impl LevelData {
             Level {
                 id: 6,
                 name: "Hero of HOAges".to_string(),
-                target_points: 3500,
+                target_points: 12000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(210),
-                    two_star: Duration::from_secs(270),
-                    one_star: Duration::from_secs(420),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 2.5,
@@ -143,11 +143,11 @@ impl LevelData {
             Level {
                 id: 7,
                 name: "The Weed of the Many".to_string(),
-                target_points: 5000,
+                target_points: 14000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(240),
-                    two_star: Duration::from_secs(300),
-                    one_star: Duration::from_secs(480),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 3.0,
@@ -162,11 +162,11 @@ impl LevelData {
             Level {
                 id: 8,
                 name: "Dungeon Crawler Crabcrass".to_string(),
-                target_points: 7500,
+                target_points: 16000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(300),
-                    two_star: Duration::from_secs(360),
-                    one_star: Duration::from_secs(600),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 3.5,
@@ -181,11 +181,11 @@ impl LevelData {
             Level {
                 id: 9,
                 name: "Thatch of the Emerald Lawn".to_string(),
-                target_points: 10000,
+                target_points: 18000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(360),
-                    two_star: Duration::from_secs(420),
-                    one_star: Duration::from_secs(720),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 4.0,
@@ -200,11 +200,11 @@ impl LevelData {
             Level {
                 id: 10,
                 name: "Moworrow and Moworrow and Moworrow".to_string(),
-                target_points: 15000,
+                target_points: 20000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(420),
-                    two_star: Duration::from_secs(480),
-                    one_star: Duration::from_secs(840),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 5.0,
@@ -219,11 +219,11 @@ impl LevelData {
             Level {
                 id: 11,
                 name: "Weed are Legion".to_string(),
-                target_points: 20000,
+                target_points: 25000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(480),
-                    two_star: Duration::from_secs(540),
-                    one_star: Duration::from_secs(960),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 6.0,
@@ -240,9 +240,9 @@ impl LevelData {
                 name: "This is How You Lose the Weed War".to_string(),
                 target_points: 30000,
                 time_limits: TimeLimits {
-                    three_star: Duration::from_secs(600),
-                    two_star: Duration::from_secs(720),
-                    one_star: Duration::from_secs(1200),
+                    three_star: Duration::from_secs(10),
+                    two_star: Duration::from_secs(13),
+                    one_star: Duration::from_secs(15),
                 },
                 enemy_scaling: EnemyScaling {
                     health_multiplier: 7.0,

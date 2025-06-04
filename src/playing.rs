@@ -1015,7 +1015,7 @@ fn handle_level_completion_events(
     mut level_complete_events: EventReader<LevelCompleteEvent>,
     mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
     mut level_complete_text_query: Query<&mut Text, With<LevelCompleteText>>,
-    mut level_complete_stars_query: Query<Entity, With<LevelCompleteStars>>,
+    mut level_complete_stars_query: Query<(Entity, Option<&Children>), With<LevelCompleteStars>>,
 ) {
     for event in level_complete_events.read() {
         // Show level complete overlay
@@ -1026,41 +1026,45 @@ fn handle_level_completion_events(
         // Update level complete text with completion info
         for mut text in &mut level_complete_text_query {
             text.0 = format!(
-                "Level {} Complete!\n\nScore: {}\nTime: {:.1}s\nStars: {}",
+                "Level {} Complete!\n\nScore: {}\nTime: {:.1}s",
                 event.level_id,
                 event.final_score,
-                event.completion_time.as_secs_f32(),
-                event.stars_earned
+                event.completion_time.as_secs_f32()
             );
         }
 
-        // Update stars display
-        for stars_entity in &mut level_complete_stars_query {
-            // Clear existing children and add new stars based on earned stars
-            commands.entity(stars_entity).with_children(|parent| {
-                for i in 0..3 {
-                    let star_color = if i < event.stars_earned {
-                        Color::srgb(1.0, 0.8, 0.0) // Gold star
-                    } else {
-                        Color::srgb(0.3, 0.3, 0.3) // Gray star
-                    };
+        // Update stars display - only show earned stars
+        for (stars_entity, children) in &mut level_complete_stars_query {
+            let current_star_count = children.map(|c| c.len()).unwrap_or(0);
 
-                    parent.spawn((
-                        Node {
-                            width: Val::VMin(4.0),
-                            height: Val::VMin(4.0),
-                            max_width: Val::Px(30.0),
-                            max_height: Val::Px(30.0),
-                            min_width: Val::Px(20.0),
-                            min_height: Val::Px(20.0),
-                            margin: UiRect::all(Val::VMin(0.8)),
-                            ..default()
-                        },
-                        BackgroundColor(star_color),
-                        BorderRadius::all(Val::VMin(0.8)),
-                    ));
+            if current_star_count != event.stars_earned as usize {
+                // Clear existing stars if count is different
+                if let Some(children) = children {
+                    for child in children.iter() {
+                        commands.entity(child).despawn();
+                    }
                 }
-            });
+
+                // Add correct number of stars
+                commands.entity(stars_entity).with_children(|parent| {
+                    for _i in 0..event.stars_earned {
+                        parent.spawn((
+                            Node {
+                                width: Val::VMin(4.0),
+                                height: Val::VMin(4.0),
+                                max_width: Val::Px(30.0),
+                                max_height: Val::Px(30.0),
+                                min_width: Val::Px(20.0),
+                                min_height: Val::Px(20.0),
+                                margin: UiRect::all(Val::VMin(0.8)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgb(1.0, 0.8, 0.0)), // Gold star
+                            BorderRadius::all(Val::VMin(0.8)),
+                        ));
+                    }
+                });
+            }
         }
 
         info!("Level completion overlay shown for level {}", event.level_id);
