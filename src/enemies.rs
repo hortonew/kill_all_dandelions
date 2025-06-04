@@ -355,7 +355,6 @@ fn spawn_dandelions(
 struct DandelionGameState<'w, 's> {
     commands: Commands<'w, 's>,
     game_data: ResMut<'w, GameData>,
-    asset_server: Res<'w, AssetServer>,
     area_tracker: ResMut<'w, DandelionAreaTracker>,
     game_assets: Res<'w, crate::GameAssets>,
 }
@@ -592,7 +591,7 @@ fn on_dandelion_death(trigger: Trigger<DandelionDeathEvent>, mut commands: Comma
 }
 
 /// Apply damage to a dandelion and handle destruction
-pub fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
+fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
     dandelion.health = dandelion.health.saturating_sub(1);
 
     // Play slash sound effect when dandelion is hit
