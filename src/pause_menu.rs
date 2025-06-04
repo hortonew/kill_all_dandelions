@@ -1,4 +1,9 @@
-use bevy::prelude::*;
+use bevy::{
+    input::mouse::{MouseScrollUnit, MouseWheel},
+    picking::hover::HoverMap,
+    prelude::*,
+    ui::ScrollPosition,
+};
 
 use crate::GameState;
 use crate::levels::{LevelData, LevelStartEvent};
@@ -26,7 +31,8 @@ impl Plugin for PauseMenuPlugin {
                     .run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::LevelSelection))),
             )
             .add_systems(Update, switch_pause_menu_content.run_if(in_state(PauseState::Paused)))
-            .add_systems(Update, update_dynamic_font_sizes);
+            .add_systems(Update, update_dynamic_font_sizes)
+            .add_systems(Update, update_scroll_position);
     }
 }
 
@@ -564,15 +570,19 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
 
                     // Level grid container - scrollable with responsive spacing
                     parent
-                        .spawn((Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(75.0),
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::VMin(1.2),
-                            overflow: Overflow::scroll_y(),
-                            padding: UiRect::all(Val::VMin(1.0)),
-                            ..default()
-                        },))
+                        .spawn((
+                            Node {
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(65.0), // Reduced to ensure scrolling is needed
+                                max_height: Val::Px(320.0), // Reduced to 320px to force scrolling with 4+ rows
+                                flex_direction: FlexDirection::Column,
+                                row_gap: Val::Px(20.0), // Increased gap for better spacing
+                                overflow: Overflow::scroll_y(),
+                                padding: UiRect::all(Val::Px(15.0)), // Increased padding
+                                ..default()
+                            },
+                            ScrollPosition::default(), // Add ScrollPosition component for proper scrolling
+                        ))
                         .with_children(|parent| {
                             let total_levels = level_data.levels.len();
                             let levels_per_row = 3; // Better for mobile landscape
@@ -583,9 +593,11 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                 parent
                                     .spawn((Node {
                                         width: Val::Percent(100.0),
+                                        height: Val::Px(110.0),     // Increased height for better touch targets and scrolling
+                                        min_height: Val::Px(100.0), // Increased minimum content height
                                         flex_direction: FlexDirection::Row,
                                         justify_content: JustifyContent::SpaceEvenly,
-                                        column_gap: Val::VMin(1.0),
+                                        column_gap: Val::Px(10.0), // Fixed gap
                                         align_items: AlignItems::Center,
                                         ..default()
                                     },))
@@ -602,13 +614,12 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                         Button,
                                                         Node {
                                                             width: Val::Percent(30.0),
-                                                            height: Val::VMin(12.0),
-                                                            max_height: Val::Px(100.0),
-                                                            min_height: Val::Px(70.0),
+                                                            height: Val::Px(85.0), // Increased height for better touch targets
+                                                            min_height: Val::Px(75.0),
                                                             flex_direction: FlexDirection::Column,
                                                             align_items: AlignItems::Center,
                                                             justify_content: JustifyContent::Center,
-                                                            padding: UiRect::all(Val::VMin(0.8)),
+                                                            padding: UiRect::all(Val::Px(8.0)),
                                                             ..default()
                                                         },
                                                         BackgroundColor(if is_unlocked {
@@ -616,7 +627,7 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                         } else {
                                                             Color::srgb(0.3, 0.3, 0.3) // Locked
                                                         }),
-                                                        BorderRadius::all(Val::VMin(1.0)),
+                                                        BorderRadius::all(Val::Px(8.0)),
                                                         LevelSelectionButton::LevelButton(level_id as u32),
                                                         PauseMenuEntity,
                                                     ))
@@ -647,7 +658,7 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                                 }),
                                                                 DynamicFontSize { base_size: 9.0 },
                                                                 Node {
-                                                                    margin: UiRect::top(Val::VMin(0.2)),
+                                                                    margin: UiRect::top(Val::Px(3.0)),
                                                                     ..default()
                                                                 },
                                                             ));
@@ -665,8 +676,8 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                             parent
                                                                 .spawn((Node {
                                                                     flex_direction: FlexDirection::Row,
-                                                                    column_gap: Val::VMin(0.5),
-                                                                    margin: UiRect::top(Val::VMin(0.3)),
+                                                                    column_gap: Val::Px(4.0),
+                                                                    margin: UiRect::top(Val::Px(5.0)),
                                                                     justify_content: JustifyContent::Center,
                                                                     ..default()
                                                                 },))
@@ -690,7 +701,7 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                 // Empty placeholder to maintain grid structure
                                                 parent.spawn((Node {
                                                     width: Val::Percent(30.0),
-                                                    height: Val::VMin(12.0),
+                                                    height: Val::Px(85.0), // Match level card height
                                                     ..default()
                                                 },));
                                             }
@@ -712,11 +723,11 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                 min_height: Val::Px(35.0),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                margin: UiRect::top(Val::VMin(2.0)),
+                                margin: UiRect::top(Val::Px(20.0)),
                                 ..default()
                             },
                             BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-                            BorderRadius::all(Val::VMin(1.0)),
+                            BorderRadius::all(Val::Px(8.0)),
                             LevelSelectionButton::Back,
                             PauseMenuEntity,
                         ))
@@ -892,4 +903,52 @@ fn resume_sounds(sound_query: Query<&AudioSink, With<crate::SoundEntity>>) {
         sink.play();
     }
     debug!("All sounds resumed");
+}
+
+/// Updates the scroll position of scrollable nodes in response to mouse input
+fn update_scroll_position(
+    mut mouse_wheel_events: EventReader<MouseWheel>,
+    hover_map: Res<HoverMap>,
+    mut scrolled_node_query: Query<&mut ScrollPosition>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    pause_menu_state: Res<State<PauseMenuState>>,
+) {
+    // Only process scroll events when in level selection
+    if *pause_menu_state.get() != PauseMenuState::LevelSelection {
+        return;
+    }
+
+    for mouse_wheel_event in mouse_wheel_events.read() {
+        // Adjust scroll sensitivity for better mobile experience
+        let (mut dx, mut dy) = match mouse_wheel_event.unit {
+            MouseScrollUnit::Line => (mouse_wheel_event.x * 30.0, mouse_wheel_event.y * 30.0),
+            MouseScrollUnit::Pixel => (mouse_wheel_event.x * 1.5, mouse_wheel_event.y * 1.5),
+        };
+
+        if keyboard_input.pressed(KeyCode::ControlLeft) || keyboard_input.pressed(KeyCode::ControlRight) {
+            std::mem::swap(&mut dx, &mut dy);
+        }
+
+        // Apply scroll to all scroll containers when any UI element is hovered in level selection
+        let mut scroll_applied = false;
+        for (_pointer, pointer_map) in hover_map.iter() {
+            if !pointer_map.is_empty() {
+                // If anything is being hovered, apply scroll to all scroll containers
+                for mut scroll_position in &mut scrolled_node_query {
+                    scroll_position.offset_x -= dx;
+                    scroll_position.offset_y -= dy;
+                    scroll_applied = true;
+                }
+                break;
+            }
+        }
+
+        // If nothing is being hovered but we're in level selection, still allow scrolling
+        if !scroll_applied {
+            for mut scroll_position in &mut scrolled_node_query {
+                scroll_position.offset_x -= dx;
+                scroll_position.offset_y -= dy;
+            }
+        }
+    }
 }
