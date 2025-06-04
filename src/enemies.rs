@@ -621,7 +621,11 @@ fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandeli
 fn play_slash_sound(commands: &mut Commands, game_assets: &crate::GameAssets) {
     commands.spawn((
         AudioPlayer(game_assets.slash_sound.clone()),
-        crate::powerups::RabbitSoundTimer::new(0.5),
+        PlaybackSettings {
+            mode: bevy::audio::PlaybackMode::Once,
+            ..default()
+        },
+        crate::powerups::SoundTimer::new(0.5),
         crate::SoundEntity,
     ));
 }

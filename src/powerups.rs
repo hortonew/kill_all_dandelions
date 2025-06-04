@@ -21,13 +21,13 @@ const SPAWN_MARGIN: f32 = 50.0;
 const TOP_UI_HEIGHT_RATIO: f32 = 0.12;
 const BOTTOM_UI_HEIGHT_RATIO: f32 = 0.08;
 
-/// Component to track rabbit sound duration
+/// Component to track sound effect duration
 #[derive(Component)]
-pub struct RabbitSoundTimer {
+pub struct SoundTimer {
     timer: Timer,
 }
 
-impl RabbitSoundTimer {
+impl SoundTimer {
     pub fn new(duration: f32) -> Self {
         Self {
             timer: Timer::from_seconds(duration, TimerMode::Once),
@@ -53,7 +53,7 @@ impl Plugin for PowerupsPlugin {
                     update_rabbit_sprites,
                     update_fire_system,
                     cleanup_expired_entities,
-                    update_rabbit_sound_timers,
+                    update_sound_timers,
                 )
                     .run_if(in_state(GameState::Playing))
                     .run_if(in_state(PauseState::Playing)),
@@ -815,7 +815,7 @@ fn play_rabbit_sound(commands: &mut Commands, game_assets: &GameAssets) {
             mode: bevy::audio::PlaybackMode::Once,
             ..default()
         },
-        RabbitSoundTimer::new(0.4),
+        SoundTimer::new(0.4),
         crate::SoundEntity,
     ));
 }
@@ -828,13 +828,13 @@ fn play_flamethrower_sound(commands: &mut Commands, game_assets: &GameAssets) {
             mode: bevy::audio::PlaybackMode::Once,
             ..default()
         },
-        RabbitSoundTimer::new(0.6),
+        SoundTimer::new(0.6),
         crate::SoundEntity,
     ));
 }
 
-/// Update rabbit sound timers and despawn audio entities when timer expires
-pub fn update_rabbit_sound_timers(mut commands: Commands, time: Res<Time>, mut sound_query: Query<(Entity, &mut RabbitSoundTimer)>) {
+/// Update sound timers and despawn audio entities when timer expires
+pub fn update_sound_timers(mut commands: Commands, time: Res<Time>, mut sound_query: Query<(Entity, &mut SoundTimer)>) {
     for (entity, mut sound_timer) in sound_query.iter_mut() {
         sound_timer.timer.tick(time.delta());
         if sound_timer.timer.finished() {
