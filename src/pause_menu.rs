@@ -1,5 +1,8 @@
 use bevy::{
-    input::mouse::{MouseScrollUnit, MouseWheel},
+    input::{
+        mouse::{MouseScrollUnit, MouseWheel},
+        touch::{TouchInput, TouchPhase},
+    },
     picking::hover::HoverMap,
     prelude::*,
     ui::ScrollPosition,
@@ -32,7 +35,11 @@ impl Plugin for PauseMenuPlugin {
             )
             .add_systems(Update, switch_pause_menu_content.run_if(in_state(PauseState::Paused)))
             .add_systems(Update, update_dynamic_font_sizes)
-            .add_systems(Update, update_scroll_position);
+            .add_systems(Update, update_scroll_position)
+            .add_systems(
+                Update,
+                handle_touch_scroll.run_if(in_state(PauseState::Paused).and(in_state(PauseMenuState::LevelSelection))),
+            );
     }
 }
 
@@ -271,6 +278,7 @@ fn pause_menu_interactions(
     mut next_pause_state: ResMut<NextState<PauseState>>,
     mut next_pause_menu_state: ResMut<NextState<PauseMenuState>>,
     mut next_game_state: ResMut<NextState<GameState>>,
+    mut level_data: ResMut<LevelData>,
 ) {
     for (interaction, mut color, button_type) in &mut interaction_query {
         match *interaction {
@@ -279,6 +287,8 @@ fn pause_menu_interactions(
                     next_pause_state.set(PauseState::Playing);
                 }
                 PauseMenuButton::Restart => {
+                    // Reset all level progress before returning to menu
+                    level_data.reset_all_progress();
                     next_pause_state.set(PauseState::Playing);
                     next_game_state.set(GameState::Menu);
                 }
@@ -948,6 +958,55 @@ fn update_scroll_position(
             for mut scroll_position in &mut scrolled_node_query {
                 scroll_position.offset_x -= dx;
                 scroll_position.offset_y -= dy;
+            }
+        }
+    }
+}
+
+/// Resource to track touch scroll state
+#[derive(Resource, Default)]
+struct TouchScrollState {
+    last_touch_position: Option<Vec2>,
+    is_scrolling: bool,
+}
+
+/// Handle touch scrolling input
+fn handle_touch_scroll(
+    mut touch_input: EventReader<TouchInput>,
+    mut scroll_query: Query<&mut ScrollPosition>,
+    touch_scroll_state: Option<ResMut<TouchScrollState>>,
+    pause_menu_state: Res<State<PauseMenuState>>,
+) {
+    let Some(mut touch_scroll_state) = touch_scroll_state else {
+        return;
+    };
+
+    // Only process touch input in level selection
+    if *pause_menu_state.get() != PauseMenuState::LevelSelection {
+        return;
+    }
+
+    for event in touch_input.read() {
+        match event.phase {
+            TouchPhase::Started | TouchPhase::Moved => {
+                let position = event.position;
+                // Update scroll position based on touch movement
+                if let Some(last_position) = touch_scroll_state.last_touch_position {
+                    let delta = position - last_position;
+
+                    for mut scroll_position in &mut scroll_query {
+                        scroll_position.offset_y -= delta.y * 2.0; // Multiply by 2 for better touch sensitivity
+                    }
+                }
+
+                // Update last touch position
+                touch_scroll_state.last_touch_position = Some(position);
+                touch_scroll_state.is_scrolling = true;
+            }
+            TouchPhase::Ended | TouchPhase::Canceled => {
+                // Reset scrolling state on touch end
+                touch_scroll_state.is_scrolling = false;
+                touch_scroll_state.last_touch_position = None;
             }
         }
     }

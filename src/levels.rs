@@ -344,6 +344,18 @@ impl LevelData {
             self.current_level = level_id;
         }
     }
+
+    /// Reset all level progress to initial state
+    pub fn reset_all_progress(&mut self) {
+        // Reset current level to 1
+        self.current_level = 1;
+
+        // Reset all level progress to default state
+        let level_count = self.levels.len();
+        self.level_progress = vec![LevelProgress::default(); level_count];
+
+        info!("All level progress has been reset to initial state");
+    }
 }
 
 /// Individual level configuration
