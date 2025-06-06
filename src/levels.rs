@@ -428,18 +428,24 @@ pub fn calculate_stars(time_limits: &TimeLimits, completion_time: Duration) -> u
 /// Resource to track current level session
 #[derive(Resource, Default)]
 pub struct LevelSession {
-    pub start_time: Option<Duration>,
+    pub elapsed_time: Duration,
     pub target_reached: bool,
 }
 
 impl LevelSession {
-    pub fn start(&mut self, current_time: Duration) {
-        self.start_time = Some(current_time);
+    pub fn start(&mut self) {
+        self.elapsed_time = Duration::ZERO;
         self.target_reached = false;
     }
 
-    pub fn get_elapsed_time(&self, current_time: Duration) -> Option<Duration> {
-        self.start_time.map(|start| current_time - start)
+    pub fn update(&mut self, delta: Duration) {
+        if !self.target_reached {
+            self.elapsed_time += delta;
+        }
+    }
+
+    pub fn get_elapsed_time(&self) -> Duration {
+        self.elapsed_time
     }
 
     pub fn complete(&mut self) {
@@ -486,7 +492,9 @@ impl Plugin for LevelsPlugin {
             .add_event::<LevelFailedEvent>()
             .add_systems(
                 Update,
-                (check_level_completion, handle_level_events).run_if(in_state(crate::GameState::Playing)),
+                (check_level_completion, handle_level_events)
+                    .run_if(in_state(crate::GameState::Playing))
+                    .run_if(in_state(crate::pause_menu::PauseState::Playing)),
             );
     }
 }
@@ -500,19 +508,39 @@ fn check_level_completion(
     time: Res<Time>,
 ) {
     if let Some(current_level) = level_data.get_current_level() {
+        // Update the level session timer (only runs when game is playing due to run conditions)
+        level_session.update(time.delta());
+
+        let elapsed = level_session.get_elapsed_time();
+
+        // Log time remaining for each star threshold roughly once every 5 seconds
+        if elapsed.as_millis() % 5000 < 100 {
+            let three_star_remaining = current_level.time_limits.three_star.saturating_sub(elapsed);
+            let two_star_remaining = current_level.time_limits.two_star.saturating_sub(elapsed);
+            let one_star_remaining = current_level.time_limits.one_star.saturating_sub(elapsed);
+
+            debug!(
+                "Level {} - Elapsed: {:.1}s | 3⭐: {:.1}s left | 2⭐: {:.1}s left | 1⭐: {:.1}s left",
+                current_level.id,
+                elapsed.as_secs_f32(),
+                three_star_remaining.as_secs_f32(),
+                two_star_remaining.as_secs_f32(),
+                one_star_remaining.as_secs_f32()
+            );
+        }
+
         if !level_session.target_reached && game_data.score >= current_level.target_points {
             level_session.complete();
 
-            if let Some(completion_time) = level_session.get_elapsed_time(time.elapsed()) {
-                let stars = calculate_stars(&current_level.time_limits, completion_time);
+            let completion_time = level_session.get_elapsed_time();
+            let stars = calculate_stars(&current_level.time_limits, completion_time);
 
-                level_complete_events.write(LevelCompleteEvent {
-                    level_id: current_level.id,
-                    completion_time,
-                    final_score: game_data.score,
-                    stars_earned: stars,
-                });
-            }
+            level_complete_events.write(LevelCompleteEvent {
+                level_id: current_level.id,
+                completion_time,
+                final_score: game_data.score,
+                stars_earned: stars,
+            });
         }
     }
 }
@@ -524,7 +552,7 @@ fn handle_level_events(
     mut level_failed_events: EventReader<LevelFailedEvent>,
     mut level_data: ResMut<LevelData>,
     mut level_session: ResMut<LevelSession>,
-    time: Res<Time>,
+    _time: Res<Time>,
 ) {
     // Handle level completions
     for event in level_complete_events.read() {
@@ -534,7 +562,7 @@ fn handle_level_events(
 
     // Handle level starts
     for event in level_start_events.read() {
-        level_session.start(time.elapsed());
+        level_session.start();
         info!("Level {} started", event.level_id);
     }
 

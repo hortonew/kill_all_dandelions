@@ -179,13 +179,13 @@ struct DynamicFontSize {
 }
 
 /// Initialize game resources
-fn setup_game_resources(mut commands: Commands, time: Res<Time>) {
+fn setup_game_resources(mut commands: Commands) {
     commands.insert_resource(GameData::new());
 
     // Initialize level session and start it fresh
     // This ensures a clean start whether the resource exists or not
     let mut level_session = crate::levels::LevelSession::default();
-    level_session.start(time.elapsed());
+    level_session.start();
     commands.insert_resource(level_session);
 
     info!("Game started with fresh level session!");
@@ -1097,6 +1097,7 @@ fn handle_level_completion_events(
     mut level_complete_overlay_query: Query<&mut Visibility, With<LevelCompleteOverlay>>,
     mut level_complete_text_query: Query<&mut Text, With<LevelCompleteText>>,
     mut level_complete_stars_query: Query<(Entity, Option<&Children>), With<LevelCompleteStars>>,
+    game_assets: Res<crate::GameAssets>,
 ) {
     for event in level_complete_events.read() {
         // Show level complete overlay
@@ -1126,22 +1127,17 @@ fn handle_level_completion_events(
                     }
                 }
 
-                // Add correct number of stars
+                // Add correct number of stars using image assets
                 commands.entity(stars_entity).with_children(|parent| {
                     for _i in 0..event.stars_earned {
                         parent.spawn((
                             Node {
-                                width: Val::VMin(4.0),
-                                height: Val::VMin(4.0),
-                                max_width: Val::Px(30.0),
-                                max_height: Val::Px(30.0),
-                                min_width: Val::Px(20.0),
-                                min_height: Val::Px(20.0),
-                                margin: UiRect::all(Val::VMin(0.8)),
+                                width: Val::Px(30.0),
+                                height: Val::Px(30.0),
+                                margin: UiRect::all(Val::Px(5.0)),
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(1.0, 0.8, 0.0)), // Gold star
-                            BorderRadius::all(Val::VMin(0.8)),
+                            ImageNode::new(game_assets.star_complete.clone()),
                         ));
                     }
                 });

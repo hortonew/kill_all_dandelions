@@ -536,7 +536,7 @@ fn setup_powerup_help_menu(mut commands: Commands, asset_server: Res<AssetServer
 }
 
 /// Setup level selection menu UI
-fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>) {
+fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>, game_assets: Res<crate::GameAssets>) {
     commands
         .spawn((
             Node {
@@ -695,14 +695,16 @@ fn setup_level_selection_menu(mut commands: Commands, level_data: Res<LevelData>
                                                                 .with_children(|parent| {
                                                                     for star_index in 0..3 {
                                                                         parent.spawn((
-                                                                            Text::new("★"),
-                                                                            TextFont { font_size: 10.0, ..default() },
-                                                                            TextColor(Color::srgb(0.8, 0.8, 0.2)),
+                                                                            Node {
+                                                                                width: Val::Px(25.0),
+                                                                                height: Val::Px(25.0),
+                                                                                ..default()
+                                                                            },
+                                                                            ImageNode::new(game_assets.star_incomplete.clone()),
                                                                             StarDisplay {
                                                                                 level_id: level_id as u32,
                                                                                 star_index,
                                                                             },
-                                                                            DynamicFontSize { base_size: 10.0 },
                                                                         ));
                                                                     }
                                                                 });
@@ -762,20 +764,19 @@ fn update_dynamic_font_sizes(windows: Query<&Window>, mut text_query: Query<(&mu
 }
 
 /// Update star displays based on level progress
-fn update_star_displays(mut star_query: Query<(&mut Text, &mut TextColor, &StarDisplay)>, level_data: Res<LevelData>) {
-    for (mut text, mut text_color, star_display) in &mut star_query {
+fn update_star_displays(mut star_query: Query<(&mut ImageNode, &StarDisplay)>, level_data: Res<LevelData>, game_assets: Res<crate::GameAssets>) {
+    for (mut image_node, star_display) in &mut star_query {
         if let Some(progress) = level_data.level_progress.get((star_display.level_id - 1) as usize) {
             let filled_stars = progress.best_stars;
 
-            // Update star text based on index and progress
-            let (star_text, star_color) = if star_display.star_index < filled_stars {
-                ("*", Color::srgb(1.0, 0.8, 0.0)) // Gold asterisk for filled
+            // Update star image based on index and progress
+            let star_image = if star_display.star_index < filled_stars {
+                game_assets.star_complete.clone()
             } else {
-                ("o", Color::srgb(0.4, 0.4, 0.4)) // Gray circle for empty
+                game_assets.star_incomplete.clone()
             };
 
-            text.0 = star_text.to_string();
-            *text_color = TextColor(star_color);
+            image_node.image = star_image;
         }
     }
 }
@@ -840,11 +841,17 @@ fn level_selection_interactions(
 }
 
 /// Setup pause menu when entering paused state
-fn setup_pause_menu_on_pause(pause_menu_state: Res<State<PauseMenuState>>, commands: Commands, asset_server: Res<AssetServer>, level_data: Res<LevelData>) {
+fn setup_pause_menu_on_pause(
+    pause_menu_state: Res<State<PauseMenuState>>,
+    commands: Commands,
+    asset_server: Res<AssetServer>,
+    level_data: Res<LevelData>,
+    game_assets: Res<crate::GameAssets>,
+) {
     match pause_menu_state.get() {
         PauseMenuState::PauseMenu => setup_pause_menu(commands),
         PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
-        PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data),
+        PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data, game_assets),
     }
 }
 
@@ -854,6 +861,7 @@ fn switch_pause_menu_content(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     level_data: Res<LevelData>,
+    game_assets: Res<crate::GameAssets>,
     pause_entities: Query<Entity, With<PauseMenuEntity>>,
     mut local_previous_state: Local<Option<PauseMenuState>>,
 ) {
@@ -870,7 +878,7 @@ fn switch_pause_menu_content(
             match current_state {
                 PauseMenuState::PauseMenu => setup_pause_menu(commands),
                 PauseMenuState::PowerupHelp => setup_powerup_help_menu(commands, asset_server),
-                PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data),
+                PauseMenuState::LevelSelection => setup_level_selection_menu(commands, level_data, game_assets),
             }
         }
     }
