@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use crate::GameAssets;
 use crate::GameState;
+use crate::levels::LevelData;
 use crate::pause_menu::PauseState;
 use crate::playing::GameData;
 
@@ -15,13 +16,59 @@ pub struct DandelionDeathEvent {
     pub size: DandelionSize,
 }
 
+/// Event triggered when two dandelions merge into a larger one
+#[derive(Event)]
+pub struct DandelionMergeEvent {
+    pub position: Vec2,
+    pub old_size: DandelionSize,
+    pub new_size: DandelionSize,
+    pub merged_entities: (Entity, Entity),
+}
+
+/// Event triggered when a moving dandelion upgrades a stationary one
+#[derive(Event)]
+pub struct DandelionUpgradeEvent {
+    pub position: Vec2,
+    pub old_size: DandelionSize,
+    pub new_size: DandelionSize,
+    pub stationary_entity: Entity,
+    pub _moving_entity: Entity,
+}
+
+/// Event triggered when a seed orb spawns a new dandelion
+#[derive(Event)]
+pub struct SeedSpawnEvent {
+    pub position: Vec2,
+    pub size: DandelionSize,
+    pub health: u32,
+}
+
+/// Event triggered for sound effects
+#[derive(Event)]
+pub struct SoundEffectEvent {
+    pub sound_type: SoundType,
+    pub _position: Option<Vec2>,
+}
+
+/// Types of sound effects
+#[derive(Clone, Debug)]
+pub enum SoundType {
+    Slash,
+    Merge,
+    Upgrade,
+    SeedSpawn,
+}
+
 /// Plugin for handling enemy spawning and behavior
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<DandelionDeathEvent>()
-            .add_observer(on_dandelion_death)
+        app.add_observer(on_dandelion_death)
+            .add_observer(on_dandelion_merge)
+            .add_observer(on_dandelion_upgrade)
+            .add_observer(on_seed_spawn)
+            .add_observer(on_sound_effect)
             .add_systems(OnEnter(GameState::Playing), (setup_enemy_timer, setup_area_tracker, setup_variety_spawner))
             .add_systems(
                 Update,
@@ -285,7 +332,7 @@ fn spawn_dandelions(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
-    level_data: Option<Res<crate::levels::LevelData>>,
+    level_data: Option<Res<LevelData>>,
 ) {
     // Apply level-based spawn rate scaling
     let spawn_rate_multiplier = if let Some(level_data) = &level_data {
@@ -356,7 +403,7 @@ struct DandelionGameState<'w, 's> {
     commands: Commands<'w, 's>,
     game_data: ResMut<'w, GameData>,
     area_tracker: ResMut<'w, DandelionAreaTracker>,
-    game_assets: Res<'w, crate::GameAssets>,
+    _game_assets: Res<'w, crate::GameAssets>,
 }
 
 /// Handle clicks and touches on dandelions
@@ -367,7 +414,7 @@ fn handle_dandelion_clicks(
     touches: Res<Touches>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    level_data: Option<Res<crate::levels::LevelData>>,
+    level_data: Option<Res<LevelData>>,
 ) {
     // Check for mouse click
     let mouse_clicked = mouse_input.just_pressed(MouseButton::Left);
@@ -442,7 +489,7 @@ fn process_slash_attack(
     mut game_state: DandelionGameState,
     mut dandelion_query: Query<(Entity, &mut Dandelion, &Transform)>,
     click_pos: Vec2,
-    level_data: Option<Res<crate::levels::LevelData>>,
+    level_data: Option<Res<LevelData>>,
 ) {
     let base_slash_offset = game_state.game_data.slash_offset;
     let total_stars = level_data.as_ref().map(|ld| ld.get_total_stars()).unwrap_or(0);
@@ -590,12 +637,203 @@ fn on_dandelion_death(trigger: Trigger<DandelionDeathEvent>, mut commands: Comma
     );
 }
 
+/// Observer that handles dandelion merge events
+fn on_dandelion_merge(
+    trigger: Trigger<DandelionMergeEvent>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+    level_data: Option<Res<LevelData>>,
+) {
+    let event = trigger.event();
+
+    // Update area tracker: remove two old dandelions, add one new one
+    area_tracker.total_area -= event.old_size.visual_area() * 2.0;
+    area_tracker.total_area += event.new_size.visual_area();
+
+    // Remove the two original dandelions
+    if let Ok(mut ec) = commands.get_entity(event.merged_entities.0) {
+        ec.despawn();
+    }
+    if let Ok(mut ec) = commands.get_entity(event.merged_entities.1) {
+        ec.despawn();
+    }
+
+    // Spawn merge effect
+    spawn_merge_effect(&mut commands, event.position, event.new_size);
+
+    // Calculate health for merged dandelion
+    let base_health = match event.new_size {
+        DandelionSize::Tiny => 1,
+        DandelionSize::Small => 2,
+        DandelionSize::Medium => 3,
+        DandelionSize::Large => 4,
+        DandelionSize::Huge => 5,
+    };
+
+    let health = if let Some(level_data) = &level_data {
+        if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
+            (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
+        } else {
+            base_health
+        }
+    } else {
+        base_health
+    };
+
+    // Create new merged dandelion
+    let mut entity_commands = commands.spawn((
+        Sprite {
+            image: asset_server.load(event.new_size.asset_path()),
+            color: Color::WHITE,
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(event.position.x, event.position.y, 10.0)).with_scale(Vec3::splat(event.new_size.scale())),
+        Dandelion { health, size: event.new_size },
+        EnemyEntity,
+    ));
+
+    // Add moving component if huge size
+    if event.new_size == DandelionSize::Huge {
+        entity_commands.insert(MovingDandelion::default());
+    }
+
+    // Update count (2 removed, 1 added = net -1)
+    game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+
+    // Trigger sound effect
+    commands.trigger(SoundEffectEvent {
+        sound_type: SoundType::Merge,
+        _position: Some(event.position),
+    });
+
+    debug!(
+        "Merge observer: created {:?} dandelion at ({:.1}, {:.1}) with health {}",
+        event.new_size, event.position.x, event.position.y, health
+    );
+}
+
+/// Observer that handles dandelion upgrade events
+fn on_dandelion_upgrade(
+    trigger: Trigger<DandelionUpgradeEvent>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+) {
+    let event = trigger.event();
+
+    // Update area tracker
+    area_tracker.total_area -= event.old_size.visual_area();
+    area_tracker.total_area += event.new_size.visual_area();
+
+    // Add upgrade cooldown to prevent immediate re-upgrading
+    if let Ok(mut entity_commands) = commands.get_entity(event.stationary_entity) {
+        entity_commands.try_insert(UpgradeCooldown::default());
+    }
+
+    // Update the sprite and transform
+    if let Ok(mut entity_commands) = commands.get_entity(event.stationary_entity) {
+        entity_commands.try_insert((
+            Sprite {
+                image: asset_server.load(event.new_size.asset_path()),
+                color: Color::WHITE,
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(event.position.x, event.position.y, 10.0)).with_scale(Vec3::splat(event.new_size.scale())),
+        ));
+    }
+
+    // If it became huge, make it moving too
+    if event.new_size == DandelionSize::Huge {
+        if let Ok(mut entity_commands) = commands.get_entity(event.stationary_entity) {
+            entity_commands.try_insert(MovingDandelion::default());
+        }
+    }
+
+    // Trigger sound effect
+    commands.trigger(SoundEffectEvent {
+        sound_type: SoundType::Upgrade,
+        _position: Some(event.position),
+    });
+
+    debug!(
+        "Upgrade observer: upgraded {:?} to {:?} at ({:.1}, {:.1})",
+        event.old_size, event.new_size, event.position.x, event.position.y
+    );
+}
+
+/// Observer that handles seed spawn events
+fn on_seed_spawn(
+    trigger: Trigger<SeedSpawnEvent>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut game_data: ResMut<GameData>,
+    mut area_tracker: ResMut<DandelionAreaTracker>,
+) {
+    let event = trigger.event();
+
+    commands.spawn((
+        Sprite {
+            image: asset_server.load(event.size.asset_path()),
+            color: Color::WHITE,
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(event.position.x, event.position.y, 10.0)).with_scale(Vec3::splat(event.size.scale())),
+        Dandelion {
+            health: event.health,
+            size: event.size,
+        },
+        EnemyEntity,
+    ));
+
+    // Update dandelion count and area
+    game_data.dandelion_count += 1;
+    area_tracker.total_area += event.size.visual_area();
+
+    // Trigger sound effect
+    commands.trigger(SoundEffectEvent {
+        sound_type: SoundType::SeedSpawn,
+        _position: Some(event.position),
+    });
+
+    debug!(
+        "Seed spawn observer: spawned {:?} dandelion at ({:.1}, {:.1}) with health {}",
+        event.size, event.position.x, event.position.y, event.health
+    );
+}
+
+/// Observer that handles sound effect events
+fn on_sound_effect(trigger: Trigger<SoundEffectEvent>, mut commands: Commands, game_assets: Res<crate::GameAssets>) {
+    let event = trigger.event();
+
+    match event.sound_type {
+        SoundType::Slash => play_slash_sound(&mut commands, &game_assets),
+        SoundType::Merge => {
+            // play_slash_sound(&mut commands, &game_assets);
+        }
+        SoundType::Upgrade => {
+            // For now, use slash sound for upgrade - could add dedicated upgrade sound later
+            // play_slash_sound(&mut commands, &game_assets);
+        }
+        SoundType::SeedSpawn => {
+            // For now, use slash sound for seed spawn - could add dedicated spawn sound later
+            // play_slash_sound(&mut commands, &game_assets);
+        }
+    }
+
+    debug!("Sound effect observer: playing {:?} sound", event.sound_type);
+}
+
 /// Apply damage to a dandelion and handle destruction
 fn damage_dandelion(game_state: &mut DandelionGameState, entity: Entity, dandelion: &mut Dandelion, position: Vec2) {
     dandelion.health = dandelion.health.saturating_sub(1);
 
-    // Play slash sound effect when dandelion is hit
-    play_slash_sound(&mut game_state.commands, &game_state.game_assets);
+    // Trigger sound effect event
+    game_state.commands.trigger(SoundEffectEvent {
+        sound_type: SoundType::Slash,
+        _position: Some(position),
+    });
 
     if dandelion.health == 0 {
         // Trigger death event for seed spawning
@@ -688,15 +926,7 @@ fn spawn_seed_orbs(commands: &mut Commands, asset_server: &Res<AssetServer>, ori
 }
 
 /// Update seed orb movement and spawning
-fn update_seed_orbs(
-    mut commands: Commands,
-    mut orb_query: Query<(Entity, &mut Transform, &mut SeedOrb)>,
-    time: Res<Time>,
-    asset_server: Res<AssetServer>,
-    mut game_data: ResMut<GameData>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
-    level_data: Option<Res<crate::levels::LevelData>>,
-) {
+fn update_seed_orbs(mut commands: Commands, mut orb_query: Query<(Entity, &mut Transform, &mut SeedOrb)>, time: Res<Time>, level_data: Option<Res<LevelData>>) {
     for (entity, mut transform, mut orb) in orb_query.iter_mut() {
         orb.spawn_timer.tick(time.delta());
 
@@ -734,37 +964,19 @@ fn update_seed_orbs(
             };
 
             let size = DandelionSize::Tiny;
-            commands.spawn((
-                Sprite {
-                    image: asset_server.load(size.asset_path()),
-                    color: Color::WHITE,
-                    ..default()
-                },
-                Transform::from_translation(Vec3::new(orb.target_position.x, orb.target_position.y, 10.0)).with_scale(Vec3::splat(size.scale())),
-                Dandelion { health, size },
-                EnemyEntity,
-            ));
 
-            // Remove the seed orb and update dandelion count
-            game_data.dandelion_count += 1;
-            area_tracker.total_area += size.visual_area();
-            debug!(
-                "Seed orb spawned new dandelion at ({:.1}, {:.1}) with health {}",
-                orb.target_position.x, orb.target_position.y, health
-            );
+            // Trigger seed spawn event
+            commands.trigger(SeedSpawnEvent {
+                position: orb.target_position,
+                size,
+                health,
+            });
         }
     }
 }
 
 /// Check for dandelions that should merge together
-fn check_dandelion_merging(
-    mut commands: Commands,
-    dandelion_query: Query<(Entity, &Dandelion, &Transform)>,
-    asset_server: Res<AssetServer>,
-    mut game_data: ResMut<GameData>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
-    level_data: Option<Res<crate::levels::LevelData>>,
-) {
+fn check_dandelion_merging(mut commands: Commands, dandelion_query: Query<(Entity, &Dandelion, &Transform)>) {
     let mut to_merge: Vec<(Entity, Entity, Vec2, DandelionSize, DandelionSize)> = Vec::new();
     let mut entities_to_remove: HashSet<Entity> = HashSet::new();
 
@@ -815,59 +1027,13 @@ fn check_dandelion_merging(
 
     // Execute all merges
     for (entity1, entity2, merge_pos, new_size, old_size) in to_merge {
-        // Update area tracker: remove two old dandelions, add one new one
-        area_tracker.total_area -= old_size.visual_area() * 2.0;
-        area_tracker.total_area += new_size.visual_area();
-
-        // Remove the two original dandelions
-        if let Ok(mut ec) = commands.get_entity(entity1) {
-            ec.despawn();
-        }
-        if let Ok(mut ec) = commands.get_entity(entity2) {
-            ec.despawn();
-        }
-
-        // Spawn merge effect
-        spawn_merge_effect(&mut commands, merge_pos, new_size);
-
-        // Create new merged dandelion
-        // Apply level-based health scaling to merged dandelions
-        let base_health = match new_size {
-            DandelionSize::Tiny => 1,
-            DandelionSize::Small => 2,
-            DandelionSize::Medium => 3,
-            DandelionSize::Large => 4,
-            DandelionSize::Huge => 5,
-        };
-
-        let health = if let Some(level_data) = &level_data {
-            if let Some(current_level) = level_data.levels.get((level_data.current_level - 1) as usize) {
-                (base_health as f32 * current_level.enemy_scaling.health_multiplier).ceil() as u32
-            } else {
-                base_health
-            }
-        } else {
-            base_health
-        };
-
-        let mut entity_commands = commands.spawn((
-            Sprite {
-                image: asset_server.load(new_size.asset_path()),
-                color: Color::WHITE,
-                ..default()
-            },
-            Transform::from_translation(Vec3::new(merge_pos.x, merge_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
-            Dandelion { health, size: new_size },
-            EnemyEntity,
-        ));
-
-        // Add moving component if huge size
-        if new_size == DandelionSize::Huge {
-            entity_commands.insert(MovingDandelion::default());
-        }
-
-        // Update count (2 removed, 1 added = net -1)
-        game_data.dandelion_count = game_data.dandelion_count.saturating_sub(1);
+        // Trigger merge event
+        commands.trigger(DandelionMergeEvent {
+            position: merge_pos,
+            old_size,
+            new_size,
+            merged_entities: (entity1, entity2),
+        });
     }
 }
 
@@ -958,8 +1124,6 @@ fn check_moving_dandelion_collisions(
     mut commands: Commands,
     moving_query: Query<(Entity, &Transform, &Dandelion), With<MovingDandelion>>,
     mut stationary_query: Query<(Entity, &Transform, &mut Dandelion), (Without<MovingDandelion>, With<Dandelion>, Without<UpgradeCooldown>)>,
-    asset_server: Res<AssetServer>,
-    mut area_tracker: ResMut<DandelionAreaTracker>,
 ) {
     let mut upgrades_this_frame = 0;
     const MAX_UPGRADES_PER_FRAME: usize = 10; // Limit to prevent performance issues
@@ -988,36 +1152,17 @@ fn check_moving_dandelion_collisions(
                 if let Some(new_size) = stationary_dandelion.size.next_size() {
                     let old_size = stationary_dandelion.size;
 
-                    // Update area tracker
-                    area_tracker.total_area -= stationary_dandelion.size.visual_area();
-                    area_tracker.total_area += new_size.visual_area();
-
-                    // Update the dandelion
+                    // Update the dandelion size
                     stationary_dandelion.size = new_size;
 
-                    // Add upgrade cooldown to prevent immediate re-upgrading
-                    if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
-                        entity_commands.try_insert(UpgradeCooldown::default());
-                    }
-
-                    // Update the sprite and transform
-                    if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
-                        entity_commands.try_insert((
-                            Sprite {
-                                image: asset_server.load(new_size.asset_path()),
-                                color: Color::WHITE,
-                                ..default()
-                            },
-                            Transform::from_translation(Vec3::new(stationary_pos.x, stationary_pos.y, 10.0)).with_scale(Vec3::splat(new_size.scale())),
-                        ));
-                    }
-
-                    // If it became huge, make it moving too
-                    if new_size == DandelionSize::Huge {
-                        if let Ok(mut entity_commands) = commands.get_entity(stationary_entity) {
-                            entity_commands.try_insert(MovingDandelion::default());
-                        }
-                    }
+                    // Trigger upgrade event
+                    commands.trigger(DandelionUpgradeEvent {
+                        position: stationary_pos,
+                        old_size,
+                        new_size,
+                        stationary_entity,
+                        _moving_entity,
+                    });
 
                     upgrades_this_frame += 1;
                     debug!("Moving huge dandelion upgraded a {:?} to {:?}", old_size, new_size);
@@ -1049,7 +1194,7 @@ fn spawn_variety_dandelions(
     asset_server: Res<AssetServer>,
     mut game_data: ResMut<GameData>,
     mut area_tracker: ResMut<DandelionAreaTracker>,
-    level_data: Option<Res<crate::levels::LevelData>>,
+    level_data: Option<Res<LevelData>>,
 ) {
     // Use level-based difficulty threshold instead of fixed threshold
     let difficulty_threshold = if let Some(level_data) = &level_data {
@@ -1188,7 +1333,7 @@ pub fn spawn_dandelion_ring(commands: &mut Commands, assets: &GameAssets, positi
 }
 
 /// Calculate the maximum health for a dandelion based on its size and current level scaling
-fn calculate_max_health(size: DandelionSize, level_data: Option<&crate::levels::LevelData>) -> u32 {
+fn calculate_max_health(size: DandelionSize, level_data: Option<&LevelData>) -> u32 {
     let base_health = size.base_health();
 
     if let Some(level_data) = level_data {
@@ -1266,7 +1411,7 @@ fn manage_health_bars(
     mut commands: Commands,
     dandelion_query: Query<(Entity, &Transform, &Dandelion), With<Dandelion>>,
     health_bar_query: Query<(Entity, &HealthBar), With<HealthBar>>,
-    level_data: Option<Res<crate::levels::LevelData>>,
+    level_data: Option<Res<LevelData>>,
 ) {
     // Create a map of existing health bars
     let mut existing_health_bars: std::collections::HashMap<Entity, Entity> = std::collections::HashMap::new();

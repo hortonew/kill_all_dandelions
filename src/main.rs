@@ -86,6 +86,7 @@ pub struct GameAssets {
     pub dandelion: Handle<Image>,
     pub seed: Handle<Image>,
     pub slash_sound: Handle<AudioSource>,
+    // pub merge_sound: Handle<AudioSource>,
     pub rabbit_sound: Handle<AudioSource>,
     pub flamethrower_sound: Handle<AudioSource>,
 }
@@ -102,6 +103,7 @@ fn preload_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         dandelion: asset_server.load("dandelion.png"),
         seed: asset_server.load("seed.png"),
         slash_sound: asset_server.load("audio/slash.wav"),
+        // merge_sound: asset_server.load("audio/merge.wav"),
         rabbit_sound: asset_server.load("audio/rabbit.wav"),
         flamethrower_sound: asset_server.load("audio/flamethrower.wav"),
     };
