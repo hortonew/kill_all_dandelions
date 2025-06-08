@@ -1309,6 +1309,7 @@ fn spawn_variety_dandelions(
 }
 
 /// Spawn a ring of dandelions for testing fire spread
+#[cfg(feature = "debug_keys")]
 pub fn spawn_dandelion_ring(commands: &mut Commands, assets: &GameAssets, position: Vec2) {
     let radius = 100.0;
     let dandelion_count = 12;
