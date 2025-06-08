@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashSet;
 
+#[cfg(feature = "debug_keys")]
 use crate::GameAssets;
 use crate::GameState;
 use crate::levels::LevelData;
