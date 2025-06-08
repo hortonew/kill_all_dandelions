@@ -48,6 +48,7 @@ impl Plugin for PowerupsPlugin {
                     spawn_powerups,
                     handle_powerup_clicks,
                     update_powerup_effects,
+                    #[cfg(feature = "debug_keys")]
                     handle_debug_keys,
                     update_rabbits,
                     update_rabbit_sprites,
@@ -417,6 +418,7 @@ fn update_powerup_effects(mut commands: Commands, mut effect_query: Query<(Entit
 }
 
 /// Handle debug keys for testing - F for fire, B for bunny
+#[cfg(feature = "debug_keys")]
 fn handle_debug_keys(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,

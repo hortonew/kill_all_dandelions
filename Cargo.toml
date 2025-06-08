@@ -29,6 +29,8 @@ dev = [
     "bevy/bevy_ui_debug",
     # Improve error messages coming from Bevy
     "bevy/track_location",
+    # Enable debug keys for local development
+    "debug_keys",
 ]
 dev_native = [
     "dev",
@@ -37,6 +39,8 @@ dev_native = [
     # Enable embedded asset hot reloading for native dev builds.
     "bevy/embedded_watcher",
 ]
+# Enable debug key functionality (F, B, D keys for spawning)
+debug_keys = []
 
 [package.metadata.bevy_cli.release]
 # Disable dev features for release builds.
